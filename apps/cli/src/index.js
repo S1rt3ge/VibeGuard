@@ -64,6 +64,9 @@ async function main(argv) {
     const options = parseOptions(args);
     const result = await initializeProject(options.root ?? process.cwd());
     console.log(`Initialized VibeGuard at ${result.stateDir}`);
+    console.log("");
+    console.log("Next: create a quarantined AI task:");
+    console.log('  vibeguard task "fix login bug" --allow "app/**,lib/**,tests/**"');
     return 0;
   }
 
@@ -80,7 +83,13 @@ async function main(argv) {
       printJson(createTaskPayload(session));
     } else {
       console.log(`Created shadow session ${session.id}`);
-      console.log(`Shadow: ${session.shadowPath}`);
+      console.log(`Shadow workspace: ${session.shadowPath}`);
+      console.log("");
+      console.log("Next:");
+      console.log("  1. Open the shadow workspace in your AI coding tool.");
+      console.log("  2. Let the agent edit files there, not in your real repo.");
+      console.log(`  3. Run: vibeguard review --session ${session.id}`);
+      console.log(`  4. Run: vibeguard apply --safe --session ${session.id}`);
     }
     return 0;
   }
@@ -556,6 +565,16 @@ function printJson(value) {
 function printHelp() {
   console.log(`VibeGuard
 
+AI-native change control for coding agents.
+Let AI code fast. Merge safely.
+
+Quick start:
+  vibeguard init
+  vibeguard task "fix login bug" --allow "app/**,lib/**,tests/**"
+  # Open the printed shadow workspace in your AI coding tool.
+  vibeguard review --session "<session-id>"
+  vibeguard apply --safe --session "<session-id>"
+
 Commands:
   vibeguard init [--root <path>]
   vibeguard task "<task>" [--root <path>] [--session <id>] [--allow <csv>] [--json]
@@ -575,7 +594,9 @@ Commands:
   vibeguard rollback --session <id> [--apply <apply-id>] [--root <path>] [--json]
   vibeguard capsule list [--root <path>] [--json]
   vibeguard capsule show (--latest|--path <path>) [--root <path>] [--json]
-  vibeguard capsule --task "<task>" --files <csv> [--allow <csv>] [--root <path>]`);
+  vibeguard capsule --task "<task>" --files <csv> [--allow <csv>] [--root <path>]
+
+Read more: https://github.com/S1rt3ge/VibeGuard#readme`);
 }
 
 main(process.argv.slice(2))

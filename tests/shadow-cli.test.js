@@ -52,6 +52,8 @@ test("CLI init and task commands create project state", async () => {
 
     assert.equal(init.status, 0, init.stderr);
     assert.match(init.stdout, /Initialized VibeGuard/);
+    assert.match(init.stdout, /Next: create a quarantined AI task/);
+    assert.match(init.stdout, /vibeguard task "fix login bug"/);
     await access(path.join(root, ".vibeguard", "config.json"));
 
     const task = spawnSync(
@@ -62,6 +64,10 @@ test("CLI init and task commands create project state", async () => {
 
     assert.equal(task.status, 0, task.stderr);
     assert.match(task.stdout, /Created shadow session/);
+    assert.match(task.stdout, /Shadow workspace:/);
+    assert.match(task.stdout, /Open the shadow workspace in your AI coding tool/);
+    assert.match(task.stdout, /vibeguard review --session/);
+    assert.match(task.stdout, /vibeguard apply --safe --session/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -108,6 +114,10 @@ test("CLI help and capsule commands work", async () => {
       encoding: "utf8",
     });
     assert.equal(help.status, 0, help.stderr);
+    assert.match(help.stdout, /AI-native change control for coding agents/);
+    assert.match(help.stdout, /Quick start:/);
+    assert.match(help.stdout, /vibeguard init/);
+    assert.match(help.stdout, /Read more: https:\/\/github\.com\/S1rt3ge\/VibeGuard#readme/);
     assert.match(help.stdout, /vibeguard review/);
 
     const capsule = spawnSync(

@@ -34,6 +34,8 @@ test("CLI task --json prints parseable session payload", async () => {
 
     assert.equal(result.status, 0, result.stderr);
     assert.doesNotMatch(result.stdout, /Created shadow session/);
+    assert.doesNotMatch(result.stdout, /Open the shadow workspace/);
+    assert.doesNotMatch(result.stdout, /Next:/);
     const payload = JSON.parse(result.stdout);
 
     assert.equal(payload.schemaVersion, "0.1");

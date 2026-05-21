@@ -31,10 +31,10 @@ VibeGuard has no runtime npm dependencies.
 
 ## Install
 
-Use it directly from GitHub:
+Try it directly from GitHub:
 
 ```bash
-npx github:S1rt3ge/VibeGuard --help
+npm exec --yes --package github:S1rt3ge/VibeGuard -- vibeguard --help
 ```
 
 Or install it globally:
@@ -62,11 +62,26 @@ vibeguard init
 vibeguard task "fix login redirect bug" --allow "app/**,lib/auth/**,tests/**"
 ```
 
+`init` prints the next command to run:
+
+```text
+Initialized VibeGuard at /your-project/.vibeguard
+
+Next: create a quarantined AI task:
+  vibeguard task "fix login bug" --allow "app/**,lib/**,tests/**"
+```
+
 The `task` command prints a shadow workspace path:
 
 ```text
 Created shadow session 2026-05-19-fix-login-redirect-bug
-Shadow: /your-project/.vibeguard/shadows/2026-05-19-fix-login-redirect-bug
+Shadow workspace: /your-project/.vibeguard/shadows/2026-05-19-fix-login-redirect-bug
+
+Next:
+  1. Open the shadow workspace in your AI coding tool.
+  2. Let the agent edit files there, not in your real repo.
+  3. Run: vibeguard review --session 2026-05-19-fix-login-redirect-bug
+  4. Run: vibeguard apply --safe --session 2026-05-19-fix-login-redirect-bug
 ```
 
 Open that shadow workspace in your AI coding tool and let the agent edit there. Your real repo stays untouched.
