@@ -117,6 +117,7 @@ test("CLI help and capsule commands work", async () => {
     assert.match(help.stdout, /AI-native change control for coding agents/);
     assert.match(help.stdout, /Quick start:/);
     assert.match(help.stdout, /vibeguard init/);
+    assert.match(help.stdout, /vibeguard doctor/);
     assert.match(help.stdout, /Read more: https:\/\/github\.com\/S1rt3ge\/VibeGuard#readme/);
     assert.match(help.stdout, /vibeguard review/);
 

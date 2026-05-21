@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
+import { access } from "node:fs/promises";
+import path from "node:path";
+
 import {
   createCapsule,
   listCapsules,
@@ -58,6 +62,17 @@ async function main(argv) {
   if (!command || command === "help" || command === "--help" || command === "-h") {
     printHelp();
     return 0;
+  }
+
+  if (command === "doctor") {
+    const options = parseOptions(args);
+    const result = await runDoctor(options.root ?? process.cwd());
+    if (options.json) {
+      printJson(createDoctorPayload(result));
+    } else {
+      console.log(formatDoctor(result));
+    }
+    return result.ok ? 0 : 2;
   }
 
   if (command === "init") {
@@ -479,6 +494,90 @@ function optionFlag(value) {
   return value === true || value === "true";
 }
 
+async function runDoctor(repoRoot) {
+  const root = path.resolve(repoRoot);
+  await access(root);
+
+  const checks = [
+    checkNodeVersion(),
+    checkGitAvailable(),
+    await checkProjectState(root),
+  ];
+  const projectReady = checks.find((check) => check.name === "project")?.status === "ok";
+
+  return {
+    ok: checks.every((check) => check.status !== "failed"),
+    checks,
+    next: projectReady
+      ? ['vibeguard task "fix login bug" --allow "app/**,lib/**,tests/**"']
+      : ["vibeguard init"],
+  };
+}
+
+function checkNodeVersion() {
+  const version = process.versions.node;
+  const major = Number(version.split(".")[0]);
+  if (Number.isFinite(major) && major >= 22) {
+    return { name: "node", status: "ok", message: `v${version}` };
+  }
+  return { name: "node", status: "failed", message: `v${version} (requires >=22)` };
+}
+
+function checkGitAvailable() {
+  const result = spawnSync("git", ["--version"], { encoding: "utf8" });
+  if (result.status === 0) {
+    return { name: "git", status: "ok", message: result.stdout.trim() };
+  }
+  return { name: "git", status: "failed", message: "git executable not found" };
+}
+
+async function checkProjectState(root) {
+  const configPath = path.join(root, ".vibeguard", "config.json");
+  try {
+    await access(configPath);
+    return { name: "project", status: "ok", message: configPath };
+  } catch {
+    return { name: "project", status: "warning", message: "not initialized" };
+  }
+}
+
+function createDoctorPayload(result) {
+  return {
+    schemaVersion: "0.1",
+    command: "doctor",
+    ok: result.ok,
+    checks: result.checks,
+    next: result.next,
+  };
+}
+
+function formatDoctor(result) {
+  const labels = {
+    node: "Node",
+    git: "Git",
+    project: "Project",
+  };
+  const lines = ["VibeGuard Doctor"];
+
+  for (const check of result.checks) {
+    const label = labels[check.name] ?? check.name;
+    if (check.status === "ok") {
+      lines.push(`${label}: ok ${check.message}`);
+    } else if (check.status === "warning") {
+      lines.push(`${label}: ${check.message}`);
+    } else {
+      lines.push(`${label}: failed ${check.message}`);
+    }
+  }
+
+  lines.push("", "Next:");
+  for (const command of result.next) {
+    lines.push(`  ${command}`);
+  }
+
+  return lines.join("\n");
+}
+
 function createTaskPayload(session) {
   return {
     schemaVersion: "0.1",
@@ -569,6 +668,7 @@ AI-native change control for coding agents.
 Let AI code fast. Merge safely.
 
 Quick start:
+  vibeguard doctor
   vibeguard init
   vibeguard task "fix login bug" --allow "app/**,lib/**,tests/**"
   # Open the printed shadow workspace in your AI coding tool.
@@ -576,6 +676,7 @@ Quick start:
   vibeguard apply --safe --session "<session-id>"
 
 Commands:
+  vibeguard doctor [--root <path>] [--json]
   vibeguard init [--root <path>]
   vibeguard task "<task>" [--root <path>] [--session <id>] [--allow <csv>] [--json]
   vibeguard status [--session <id>] [--root <path>] [--json]
