@@ -1,0 +1,41 @@
+name: VibeGuard PR Gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vibeguard-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-ai-change:
+    name: Validate AI change control
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run tests
+        run: npm test
+
+      - name: Run build checks
+        run: npm run build
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run security scan
+        run: npm run security:scan
+
+      - name: Annotate VibeGuard capsule findings
+        run: node apps/cli/src/index.js ci annotate --latest --review-latest

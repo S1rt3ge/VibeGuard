@@ -1,0 +1,10 @@
+.vibeguard/
+.codex/
+.agents/
+AGENTS.md
+SPEC_TEMPLATE.md
+docs/
+node_modules/
+coverage/
+.nyc_output/
+npm-debug.log*
