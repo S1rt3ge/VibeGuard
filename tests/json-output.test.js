@@ -271,6 +271,58 @@ test("CLI apply --safe --json prints parseable apply payload", async () => {
   }
 });
 
+test("CLI apply --safe --dry-run --json prints preview payload without artifacts", async () => {
+  const root = await createJsonFixture();
+
+  try {
+    const session = await createShadowSession({
+      repoRoot: root,
+      task: "json dry run apply",
+      sessionId: "json-dry-run-session",
+      allowedGlobs: ["src/**"],
+    });
+    await writeFile(path.join(session.shadowPath, "src", "app.js"), "safe change\n");
+    await writeFile(path.join(session.shadowPath, "src", "new.js"), "new safe file\n");
+    await writeFile(path.join(session.shadowPath, "docs", "notes.md"), "scope drift\n");
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        cliPath,
+        "apply",
+        "--safe",
+        "--dry-run",
+        "--root",
+        root,
+        "--session",
+        "json-dry-run-session",
+        "--files",
+        "src/new.js",
+        "--json",
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout, /Applied:/);
+    const payload = JSON.parse(result.stdout);
+
+    assert.equal(payload.schemaVersion, "0.1");
+    assert.equal(payload.command, "apply");
+    assert.equal(payload.dryRun, true);
+    assert.equal(payload.sessionId, "json-dry-run-session");
+    assert.deepEqual(payload.wouldApply, ["src/new.js"]);
+    assert.deepEqual(payload.applied, []);
+    assert.deepEqual(payload.skipped, { blocked: 1, approvalRequired: 0 });
+    assert.equal(await exists(path.join(root, "src", "new.js")), false);
+    assert.equal(await exists(path.join(root, ".vibeguard", "applies", "json-dry-run-session")), false);
+    assert.equal(await exists(path.join(root, ".vibeguard", "capsules")), false);
+    assert.equal(await exists(path.join(root, ".vibeguard", "debt.jsonl")), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("CLI rollback --json prints parseable rollback payload", async () => {
   const root = await createJsonFixture();
 

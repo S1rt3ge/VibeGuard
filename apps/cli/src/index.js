@@ -316,9 +316,22 @@ async function main(argv) {
     const result = await applySafeChanges(options.root ?? process.cwd(), options.session, {
       allowedGlobs: allowedGlobs.length > 0 ? allowedGlobs : undefined,
       files: options.files ? parseCsvOption(options.files, "files") : undefined,
+      dryRun: options["dry-run"] === true,
     });
     if (options.json) {
       printJson(createApplyPayload(result));
+    } else if (result.dryRun) {
+      console.log("Dry run: no files applied.");
+      console.log("Would apply:");
+      for (const filePath of result.wouldApply) {
+        console.log(`  ${filePath}`);
+      }
+      if (result.wouldApply.length === 0) {
+        console.log("  (none)");
+      }
+      console.log("Skipped:");
+      console.log(`  Blocked: ${result.review.blocked.length}`);
+      console.log(`  Approval required: ${result.review.approvalRequired.length}`);
     } else {
       console.log(`Applied: ${result.applied.length}`);
       console.log(`Skipped blocked: ${result.review.blocked.length}`);
@@ -680,9 +693,25 @@ function createContextBuildPayload(bundle, bundlePath) {
 }
 
 function createApplyPayload(result) {
+  if (result.dryRun) {
+    return {
+      schemaVersion: "0.1",
+      command: "apply",
+      dryRun: true,
+      sessionId: result.session.id,
+      wouldApply: result.wouldApply,
+      applied: result.applied,
+      skipped: {
+        blocked: result.review.blocked.length,
+        approvalRequired: result.review.approvalRequired.length,
+      },
+    };
+  }
+
   return {
     schemaVersion: "0.1",
     command: "apply",
+    dryRun: false,
     sessionId: result.session.id,
     applied: result.applied,
     skipped: {
@@ -749,7 +778,7 @@ Commands:
   vibeguard debt report [--days <n>] [--root <path>] [--json]
   vibeguard review --files <csv> [--allow <csv>] [--json]
   vibeguard review --session <id> [--allow <csv>] [--root <path>] [--json] [--save]
-  vibeguard apply --safe --session <id> [--files <csv>] [--allow <csv>] [--root <path>] [--json]
+  vibeguard apply --safe --session <id> [--dry-run] [--files <csv>] [--allow <csv>] [--root <path>] [--json]
   vibeguard rollback --session <id> [--apply <apply-id>] [--root <path>] [--json]
   vibeguard capsule list [--root <path>] [--json]
   vibeguard capsule show (--latest|--path <path>) [--root <path>] [--json]

@@ -93,6 +93,7 @@ After the agent finishes:
 ```bash
 vibeguard status --session 2026-05-19-fix-login-redirect-bug
 vibeguard review --session 2026-05-19-fix-login-redirect-bug
+vibeguard apply --safe --dry-run --session 2026-05-19-fix-login-redirect-bug
 vibeguard apply --safe --session 2026-05-19-fix-login-redirect-bug
 ```
 
@@ -117,6 +118,7 @@ vibeguard init
 vibeguard task "add billing page" --allow "app/billing/**,lib/stripe/**,tests/billing/**"
 vibeguard status --session "<session-id>"
 vibeguard review --session "<session-id>"
+vibeguard apply --safe --dry-run --session "<session-id>"
 vibeguard apply --safe --session "<session-id>"
 vibeguard rollback --session "<session-id>"
 ```
@@ -160,6 +162,7 @@ vibeguard task "fix login bug" --allow "app/**,tests/**" --json
 vibeguard context build "fix login bug" --include "app/**,tests/**" --json
 vibeguard status --session "<session-id>" --json
 vibeguard review --session "<session-id>" --json
+vibeguard apply --safe --dry-run --session "<session-id>" --json
 vibeguard apply --safe --session "<session-id>" --json
 vibeguard rollback --session "<session-id>" --json
 vibeguard debt report --days 30 --json

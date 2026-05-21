@@ -184,6 +184,16 @@ export async function applySafeChanges(repoRoot, sessionId, options = {}) {
   const shadow = path.resolve(result.session.shadowPath);
   const filesToApply = selectReviewableFiles(result.review.reviewable, options.files);
   const applied = [];
+
+  if (options.dryRun) {
+    return {
+      ...result,
+      dryRun: true,
+      wouldApply: filesToApply.map((item) => item.path),
+      applied,
+    };
+  }
+
   const applyRecord = await createApplyRecord(root, result.session.id, filesToApply, {
     applyId: options.applyId,
     task: result.session.task,

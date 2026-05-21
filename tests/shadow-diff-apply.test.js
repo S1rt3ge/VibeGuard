@@ -170,6 +170,40 @@ test("applySafeChanges can apply only selected reviewable files", async () => {
   }
 });
 
+test("applySafeChanges dry-run previews selected files without writing repo or artifacts", async () => {
+  const root = await createFixtureRepo();
+
+  try {
+    const session = await createShadowSession({
+      repoRoot: root,
+      task: "dry run safe apply",
+      sessionId: "session-dry-run",
+    });
+
+    await writeFile(path.join(session.shadowPath, "src", "app.js"), "safe change\n");
+    await writeFile(path.join(session.shadowPath, "src", "new.js"), "new safe file\n");
+    await writeFile(path.join(session.shadowPath, ".env.local"), "TOKEN=shadow\n");
+
+    const result = await applySafeChanges(root, "session-dry-run", {
+      policy: createDefaultPolicy({ allowedGlobs: ["src/**"] }),
+      files: ["src/new.js"],
+      dryRun: true,
+    });
+
+    assert.equal(result.dryRun, true);
+    assert.deepEqual(result.wouldApply, ["src/new.js"]);
+    assert.deepEqual(result.applied, []);
+    assert.equal(await readText(path.join(root, "src", "app.js")), "old app\n");
+    assert.equal(await exists(path.join(root, "src", "new.js")), false);
+    assert.equal(await readText(path.join(root, ".env.local")), "TOKEN=root\n");
+    assert.equal(await exists(path.join(root, ".vibeguard", "applies", "session-dry-run")), false);
+    assert.equal(await exists(path.join(root, ".vibeguard", "capsules")), false);
+    assert.equal(await exists(path.join(root, ".vibeguard", "debt.jsonl")), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("applySafeChanges rejects selected files that are not reviewable before writing", async () => {
   const root = await createFixtureRepo();
 
@@ -194,6 +228,53 @@ test("applySafeChanges rejects selected files that are not reviewable before wri
     assert.equal(await readText(path.join(root, "src", "app.js")), "old app\n");
     assert.equal(await readText(path.join(root, ".env.local")), "TOKEN=root\n");
     assert.equal(await exists(path.join(root, ".vibeguard", "applies", "session-selective-reject")), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("CLI apply --safe --dry-run previews changes without applying them", async () => {
+  const root = await createFixtureRepo();
+
+  try {
+    const task = spawnSync(
+      process.execPath,
+      [cliPath, "task", "dry run cli apply", "--root", root, "--session", "cli-dry-run"],
+      { encoding: "utf8" },
+    );
+    assert.equal(task.status, 0, task.stderr);
+
+    const shadowPath = path.join(root, ".vibeguard", "shadows", "cli-dry-run");
+    await writeFile(path.join(shadowPath, "src", "app.js"), "cli safe change\n");
+    await writeFile(path.join(shadowPath, ".env.local"), "TOKEN=shadow\n");
+
+    const apply = spawnSync(
+      process.execPath,
+      [
+        cliPath,
+        "apply",
+        "--safe",
+        "--dry-run",
+        "--root",
+        root,
+        "--session",
+        "cli-dry-run",
+        "--allow",
+        "src/**",
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.equal(apply.status, 0, apply.stderr);
+    assert.match(apply.stdout, /Dry run: no files applied/);
+    assert.match(apply.stdout, /Would apply:/);
+    assert.match(apply.stdout, /src\/app\.js/);
+    assert.match(apply.stdout, /Blocked: 1/);
+    assert.equal(await readText(path.join(root, "src", "app.js")), "old app\n");
+    assert.equal(await readText(path.join(root, ".env.local")), "TOKEN=root\n");
+    assert.equal(await exists(path.join(root, ".vibeguard", "applies", "cli-dry-run")), false);
+    assert.equal(await exists(path.join(root, ".vibeguard", "capsules")), false);
+    assert.equal(await exists(path.join(root, ".vibeguard", "debt.jsonl")), false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
