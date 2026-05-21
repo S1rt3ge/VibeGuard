@@ -152,6 +152,7 @@ Most workflow commands support `--json` for scripts, CI, and editor integrations
 
 ```bash
 vibeguard doctor --json
+vibeguard init --json
 vibeguard task "fix login bug" --allow "app/**,tests/**" --json
 vibeguard context build "fix login bug" --include "app/**,tests/**" --json
 vibeguard status --session "<session-id>" --json

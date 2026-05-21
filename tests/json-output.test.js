@@ -11,6 +11,35 @@ import { createShadowSession } from "../packages/core/src/shadow-workspace.js";
 
 const cliPath = path.resolve("apps/cli/src/index.js");
 
+test("CLI init --json prints parseable initialization payload", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "vibeguard-json-init-"));
+
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [cliPath, "init", "--root", root, "--json"],
+      { encoding: "utf8" },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout, /Initialized VibeGuard/);
+    assert.doesNotMatch(result.stdout, /Next:/);
+    const payload = JSON.parse(result.stdout);
+
+    assert.equal(payload.schemaVersion, "0.1");
+    assert.equal(payload.command, "init");
+    assert.match(payload.stateDir, /\.vibeguard$/);
+    assert.match(payload.configPath, /\.vibeguard[\\/]config\.json$/);
+    assert.deepEqual(payload.next, [
+      "vibeguard doctor",
+      'vibeguard task "fix login bug" --allow "app/**,lib/**,tests/**"',
+    ]);
+    await access(payload.configPath);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("CLI task --json prints parseable session payload", async () => {
   const root = await createJsonFixture();
 

@@ -78,10 +78,14 @@ async function main(argv) {
   if (command === "init") {
     const options = parseOptions(args);
     const result = await initializeProject(options.root ?? process.cwd());
-    console.log(`Initialized VibeGuard at ${result.stateDir}`);
-    console.log("");
-    console.log("Next: create a quarantined AI task:");
-    console.log('  vibeguard task "fix login bug" --allow "app/**,lib/**,tests/**"');
+    if (options.json) {
+      printJson(createInitPayload(result));
+    } else {
+      console.log(`Initialized VibeGuard at ${result.stateDir}`);
+      console.log("");
+      console.log("Next: create a quarantined AI task:");
+      console.log('  vibeguard task "fix login bug" --allow "app/**,lib/**,tests/**"');
+    }
     return 0;
   }
 
@@ -551,6 +555,19 @@ function createDoctorPayload(result) {
   };
 }
 
+function createInitPayload(result) {
+  return {
+    schemaVersion: "0.1",
+    command: "init",
+    stateDir: result.stateDir,
+    configPath: path.join(result.stateDir, "config.json"),
+    next: [
+      "vibeguard doctor",
+      'vibeguard task "fix login bug" --allow "app/**,lib/**,tests/**"',
+    ],
+  };
+}
+
 function formatDoctor(result) {
   const labels = {
     node: "Node",
@@ -677,7 +694,7 @@ Quick start:
 
 Commands:
   vibeguard doctor [--root <path>] [--json]
-  vibeguard init [--root <path>]
+  vibeguard init [--root <path>] [--json]
   vibeguard task "<task>" [--root <path>] [--session <id>] [--allow <csv>] [--json]
   vibeguard status [--session <id>] [--root <path>] [--json]
   vibeguard guard-command [--session <id>] "<command>"
