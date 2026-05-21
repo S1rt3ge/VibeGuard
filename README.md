@@ -58,6 +58,7 @@ Run VibeGuard from the repository you want to protect.
 
 ```bash
 cd your-project
+vibeguard version
 vibeguard doctor
 vibeguard init
 vibeguard task "fix login redirect bug" --allow "app/**,lib/auth/**,tests/**"
@@ -110,6 +111,7 @@ vibeguard rollback --session 2026-05-19-fix-login-redirect-bug
 ## Common Commands
 
 ```bash
+vibeguard version
 vibeguard doctor
 vibeguard init
 vibeguard task "add billing page" --allow "app/billing/**,lib/stripe/**,tests/billing/**"
@@ -151,6 +153,7 @@ vibeguard debt report --days 30
 Most workflow commands support `--json` for scripts, CI, and editor integrations:
 
 ```bash
+vibeguard version --json
 vibeguard doctor --json
 vibeguard init --json
 vibeguard task "fix login bug" --allow "app/**,tests/**" --json

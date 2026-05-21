@@ -9,6 +9,29 @@ import { createShadowSession } from "../packages/core/src/shadow-workspace.js";
 
 const cliPath = path.resolve("apps/cli/src/index.js");
 
+test("CLI version prints installed version and runtime context", async () => {
+  const packageJson = JSON.parse(await readFile("package.json", "utf8"));
+  const result = spawnSync(process.execPath, [cliPath, "version"], {
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, new RegExp(`VibeGuard ${packageJson.version}`));
+  assert.match(result.stdout, new RegExp(`Node ${process.version.replaceAll(".", "\\.")}`));
+  assert.match(result.stdout, new RegExp(`Platform ${process.platform} ${process.arch}`));
+});
+
+test("CLI version aliases print text version output", () => {
+  for (const alias of ["--version", "-v"]) {
+    const result = spawnSync(process.execPath, [cliPath, alias], {
+      encoding: "utf8",
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /^VibeGuard \d+\.\d+\.\d+/);
+  }
+});
+
 test("creates a shadow session and metadata file", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "vibeguard-shadow-"));
 
@@ -116,6 +139,7 @@ test("CLI help and capsule commands work", async () => {
     assert.equal(help.status, 0, help.stderr);
     assert.match(help.stdout, /AI-native change control for coding agents/);
     assert.match(help.stdout, /Quick start:/);
+    assert.match(help.stdout, /vibeguard version/);
     assert.match(help.stdout, /vibeguard init/);
     assert.match(help.stdout, /vibeguard doctor/);
     assert.match(help.stdout, /Read more: https:\/\/github\.com\/S1rt3ge\/VibeGuard#readme/);

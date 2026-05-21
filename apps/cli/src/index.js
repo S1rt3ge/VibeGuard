@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { access } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -61,6 +61,17 @@ async function main(argv) {
 
   if (!command || command === "help" || command === "--help" || command === "-h") {
     printHelp();
+    return 0;
+  }
+
+  if (command === "version" || command === "--version" || command === "-v") {
+    const options = parseOptions(args);
+    const result = await readVersionInfo();
+    if (command === "version" && options.json) {
+      printJson(createVersionPayload(result));
+    } else {
+      console.log(formatVersion(result));
+    }
     return 0;
   }
 
@@ -555,6 +566,33 @@ function createDoctorPayload(result) {
   };
 }
 
+async function readVersionInfo() {
+  const packageJsonUrl = new URL("../../../package.json", import.meta.url);
+  const packageJson = JSON.parse(await readFile(packageJsonUrl, "utf8"));
+  return {
+    version: packageJson.version,
+    node: process.version,
+    platform: process.platform,
+    arch: process.arch,
+  };
+}
+
+function createVersionPayload(result) {
+  return {
+    schemaVersion: "0.1",
+    command: "version",
+    ...result,
+  };
+}
+
+function formatVersion(result) {
+  return [
+    `VibeGuard ${result.version}`,
+    `Node ${result.node}`,
+    `Platform ${result.platform} ${result.arch}`,
+  ].join("\n");
+}
+
 function createInitPayload(result) {
   return {
     schemaVersion: "0.1",
@@ -685,6 +723,7 @@ AI-native change control for coding agents.
 Let AI code fast. Merge safely.
 
 Quick start:
+  vibeguard version
   vibeguard doctor
   vibeguard init
   vibeguard task "fix login bug" --allow "app/**,lib/**,tests/**"
@@ -693,6 +732,8 @@ Quick start:
   vibeguard apply --safe --session "<session-id>"
 
 Commands:
+  vibeguard version [--json]
+  vibeguard --version
   vibeguard doctor [--root <path>] [--json]
   vibeguard init [--root <path>] [--json]
   vibeguard task "<task>" [--root <path>] [--session <id>] [--allow <csv>] [--json]

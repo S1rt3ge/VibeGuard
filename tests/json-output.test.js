@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -10,6 +10,24 @@ import { appendDebtEntry } from "../packages/core/src/debt-ledger.js";
 import { createShadowSession } from "../packages/core/src/shadow-workspace.js";
 
 const cliPath = path.resolve("apps/cli/src/index.js");
+
+test("CLI version --json prints parseable runtime payload", async () => {
+  const packageJson = JSON.parse(await readFile("package.json", "utf8"));
+  const result = spawnSync(process.execPath, [cliPath, "version", "--json"], {
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout, /VibeGuard /);
+  const payload = JSON.parse(result.stdout);
+
+  assert.equal(payload.schemaVersion, "0.1");
+  assert.equal(payload.command, "version");
+  assert.equal(payload.version, packageJson.version);
+  assert.equal(payload.node, process.version);
+  assert.equal(payload.platform, process.platform);
+  assert.equal(payload.arch, process.arch);
+});
 
 test("CLI init --json prints parseable initialization payload", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "vibeguard-json-init-"));
