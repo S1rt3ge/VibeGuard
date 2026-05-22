@@ -117,6 +117,57 @@ test("CLI review classifies changed files and reports risk", () => {
   assert.match(result.stdout, /Risk: high/);
 });
 
+test("CLI review --fail-on-risk exits non-zero when risk crosses threshold", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      cliPath,
+      "review",
+      "--files",
+      "app/billing/page.tsx,.env.local,package-lock.json",
+      "--allow",
+      "app/billing/**",
+      "--fail-on-risk",
+      "medium",
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 2, result.stderr);
+  assert.match(result.stdout, /Risk: high/);
+  assert.match(result.stdout, /Risk gate: failed \(high >= medium\)/);
+});
+
+test("CLI review --fail-on-risk passes when risk is below threshold", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      cliPath,
+      "review",
+      "--files",
+      "package-lock.json",
+      "--fail-on-risk",
+      "high",
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Risk: medium/);
+  assert.match(result.stdout, /Risk gate: passed \(medium < high\)/);
+});
+
+test("CLI review --fail-on-risk rejects invalid thresholds", () => {
+  const result = spawnSync(
+    process.execPath,
+    [cliPath, "review", "--files", "src/app.js", "--fail-on-risk", "critical"],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /--fail-on-risk must be one of: low, medium, high/);
+});
+
 test("CLI guard-command exits non-zero for blocked commands", () => {
   const result = spawnSync(
     process.execPath,

@@ -130,6 +130,36 @@ test("CLI manual review --json prints parseable review payload", () => {
   assert.equal(payload.score.risk.level, "high");
 });
 
+test("CLI manual review --json --fail-on-risk emits payload before failing gate", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      cliPath,
+      "review",
+      "--files",
+      "src/app.js,.env.local,package-lock.json",
+      "--allow",
+      "src/**",
+      "--fail-on-risk",
+      "medium",
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 2, result.stderr);
+  const payload = JSON.parse(result.stdout);
+
+  assert.equal(payload.schemaVersion, "0.1");
+  assert.equal(payload.command, "review");
+  assert.equal(payload.score.risk.level, "high");
+  assert.deepEqual(payload.gate, {
+    type: "risk",
+    threshold: "medium",
+    failed: true,
+  });
+});
+
 test("CLI session review --json and status --json expose quarantine state", async () => {
   const root = await createJsonFixture();
 

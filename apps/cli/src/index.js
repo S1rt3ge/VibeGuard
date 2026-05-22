@@ -268,20 +268,26 @@ async function main(argv) {
         allowedGlobs: allowedGlobs.length > 0 ? allowedGlobs : undefined,
       });
       const payload = createReviewPayload(result);
+      const gate = createRiskGate(result.score, options["fail-on-risk"]);
+      const reviewPayload = gate ? { ...payload, gate } : payload;
       const reviewPath = options.save
-        ? await saveReviewArtifact(options.root ?? process.cwd(), payload)
+        ? await saveReviewArtifact(options.root ?? process.cwd(), reviewPayload)
         : "";
       if (options.json) {
         printJson({
-          ...payload,
+          ...reviewPayload,
           ...(reviewPath ? { reviewPath } : {}),
         });
       } else {
         console.log(formatReviewSummary(result.review, result.score));
+        if (gate) {
+          console.log(formatRiskGate(gate, result.score.risk.level));
+        }
         if (reviewPath) {
           console.log(`Review artifact: ${reviewPath}`);
         }
       }
+      return gate?.failed ? 2 : 0;
     } else {
       if (options.save) {
         throw new Error("--save is only supported with --session");
@@ -292,6 +298,7 @@ async function main(argv) {
       });
       const review = reviewChanges(files, policy);
       const score = scoreReview(review);
+      const gate = createRiskGate(score, options["fail-on-risk"]);
       if (options.json) {
         printJson({
           schemaVersion: "0.1",
@@ -299,12 +306,16 @@ async function main(argv) {
           files,
           review,
           score,
+          ...(gate ? { gate } : {}),
         });
       } else {
         console.log(formatReviewSummary(review, score));
+        if (gate) {
+          console.log(formatRiskGate(gate, score.risk.level));
+        }
       }
+      return gate?.failed ? 2 : 0;
     }
-    return 0;
   }
 
   if (command === "apply") {
@@ -483,6 +494,37 @@ function parseOptionalNonNegativeNumberOption(value, name) {
     throw new Error(`--${name} must be a non-negative number`);
   }
   return number;
+}
+
+const RISK_LEVELS = ["low", "medium", "high"];
+const RISK_LEVEL_ORDER = new Map(RISK_LEVELS.map((level, index) => [level, index]));
+
+function createRiskGate(score, thresholdValue) {
+  if (thresholdValue === undefined) {
+    return null;
+  }
+  if (thresholdValue === true) {
+    throw new Error("--fail-on-risk must be one of: low, medium, high");
+  }
+
+  const threshold = String(thresholdValue).toLowerCase();
+  if (!RISK_LEVEL_ORDER.has(threshold)) {
+    throw new Error("--fail-on-risk must be one of: low, medium, high");
+  }
+
+  const actual = score.risk.level;
+  const failed = RISK_LEVEL_ORDER.get(actual) >= RISK_LEVEL_ORDER.get(threshold);
+  return {
+    type: "risk",
+    threshold,
+    failed,
+  };
+}
+
+function formatRiskGate(gate, actualRisk) {
+  const operator = gate.failed ? ">=" : "<";
+  const status = gate.failed ? "failed" : "passed";
+  return `Risk gate: ${status} (${actualRisk} ${operator} ${gate.threshold})`;
 }
 
 function requireOption(value, name) {
@@ -776,8 +818,8 @@ Commands:
   vibeguard ci annotate (--latest|--capsule <path>) [--review <path>|--review-latest] [--root <path>]
   vibeguard context build "<task>" [--include <csv>] [--root <path>] [--json]
   vibeguard debt report [--days <n>] [--root <path>] [--json]
-  vibeguard review --files <csv> [--allow <csv>] [--json]
-  vibeguard review --session <id> [--allow <csv>] [--root <path>] [--json] [--save]
+  vibeguard review --files <csv> [--allow <csv>] [--json] [--fail-on-risk <low|medium|high>]
+  vibeguard review --session <id> [--allow <csv>] [--root <path>] [--json] [--save] [--fail-on-risk <low|medium|high>]
   vibeguard apply --safe --session <id> [--dry-run] [--files <csv>] [--allow <csv>] [--root <path>] [--json]
   vibeguard rollback --session <id> [--apply <apply-id>] [--root <path>] [--json]
   vibeguard capsule list [--root <path>] [--json]
