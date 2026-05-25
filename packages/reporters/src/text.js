@@ -23,7 +23,7 @@ export function formatReviewSummary(review, score) {
   return lines.join("\n");
 }
 
-export function buildReviewDecisionSummary(review, score) {
+export function buildReviewDecisionSummary(review, score, options = {}) {
   const counts = {
     blocked: review.blocked.length,
     approvalRequired: review.approvalRequired.length,
@@ -38,6 +38,7 @@ export function buildReviewDecisionSummary(review, score) {
     risk: score.risk.level,
     why: reviewWhy(score),
     next: reviewNextSteps(decision),
+    intent: buildIntentSummary(review, score, options),
   };
 }
 
@@ -56,6 +57,25 @@ export function formatReviewDecisionSummary(summary) {
   lines.push("  Next:");
   for (const item of summary.next) {
     lines.push(`    - ${item}`);
+  }
+
+  lines.push("  Intent:");
+  lines.push(`    Task: ${summary.intent.task}`);
+  lines.push("    Expected changes:");
+  if (summary.intent.expected.length === 0) {
+    lines.push("      - No expected changes detected.");
+  } else {
+    for (const item of summary.intent.expected) {
+      lines.push(`      - ${item.label}: ${item.files.join(", ")}`);
+    }
+  }
+  lines.push("    Suspicious changes:");
+  if (summary.intent.suspicious.length === 0) {
+    lines.push("      - No suspicious changes detected.");
+  } else {
+    for (const item of summary.intent.suspicious) {
+      lines.push(`      - ${formatSuspiciousIntentItem(item)}`);
+    }
   }
 
   return lines.join("\n");
@@ -117,6 +137,127 @@ function reviewNextSteps(decision) {
     ];
   }
   return ["No apply needed."];
+}
+
+function buildIntentSummary(review, score, options) {
+  return {
+    task: String(options.task ?? "").trim() || "manual review",
+    expected: buildExpectedIntentGroups(review.reviewable),
+    suspicious: buildSuspiciousIntentItems(review, score),
+  };
+}
+
+function buildExpectedIntentGroups(reviewable) {
+  const groups = [];
+  const groupByLabel = new Map();
+
+  for (const item of reviewable) {
+    const label = expectedIntentLabel(item.path);
+    if (!groupByLabel.has(label)) {
+      const group = { label, files: [] };
+      groups.push(group);
+      groupByLabel.set(label, group);
+    }
+    groupByLabel.get(label).files.push(item.path);
+  }
+
+  return groups;
+}
+
+function buildSuspiciousIntentItems(review, score) {
+  const items = [];
+
+  for (const item of review.blocked) {
+    items.push(intentFileItem("Blocked", item));
+  }
+  for (const item of review.approvalRequired) {
+    items.push(intentFileItem("Approval required", item));
+  }
+
+  const aggregateSignals = [
+    ...(score.slop?.problems ?? []),
+    ...(score.risk?.reasons ?? []),
+  ];
+  const seenSignals = new Set();
+  for (const signal of aggregateSignals) {
+    if (isCoveredAggregateSignal(signal, review) || seenSignals.has(signal)) {
+      continue;
+    }
+    seenSignals.add(signal);
+    items.push({
+      label: "Review signal",
+      path: null,
+      reasons: [signal],
+      riskZones: [],
+    });
+  }
+
+  return items;
+}
+
+function intentFileItem(label, item) {
+  return {
+    label,
+    path: item.path,
+    reasons: [...(item.reasons ?? [])],
+    riskZones: [...(item.riskZones ?? [])],
+  };
+}
+
+function expectedIntentLabel(filePath) {
+  if (/(^|\/)(tests?|__tests__)\//.test(filePath) || /\.(test|spec)\.[jt]sx?$/.test(filePath)) {
+    return "Tests changed";
+  }
+  if (/^(app|pages|routes)\//.test(filePath)) {
+    return "Application route/page changed";
+  }
+  if (/^(components|ui)\//.test(filePath)) {
+    return "UI component changed";
+  }
+  if (/^docs?\//.test(filePath)) {
+    return "Documentation changed";
+  }
+  if (/^(lib|packages)\//.test(filePath)) {
+    return "Library/helper changed";
+  }
+  return "Source file changed";
+}
+
+function isCoveredAggregateSignal(signal, review) {
+  if (/blocked file/.test(signal)) {
+    return review.blocked.length > 0;
+  }
+  if (/approval-required/.test(signal)) {
+    return review.approvalRequired.length > 0;
+  }
+  if (/dependency change/.test(signal)) {
+    return review.approvalRequired.some((item) => item.reasons?.includes("dependency_change"));
+  }
+  if (/out-of-scope/.test(signal)) {
+    return review.blocked.some((item) => item.reasons?.includes("outside_declared_scope"));
+  }
+  if (/High-risk zones touched/.test(signal)) {
+    return [...review.blocked, ...review.approvalRequired, ...review.reviewable]
+      .some((item) => item.riskZones?.length > 0);
+  }
+  if (
+    signal === "blocked_files_touched" ||
+    signal === "approval_required_changes" ||
+    signal === "dependency_change_requested" ||
+    signal === "high_risk_zone_touched" ||
+    signal === "high_risk_zones_touched"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function formatSuspiciousIntentItem(item) {
+  const reasons = item.reasons.length > 0 ? ` (${item.reasons.join(", ")})` : "";
+  if (item.path) {
+    return `${item.label}: ${item.path}${reasons}`;
+  }
+  return `${item.label}: ${item.reasons.join(", ")}`;
 }
 
 export function formatCommandDecision(decision) {

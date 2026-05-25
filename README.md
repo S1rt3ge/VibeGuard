@@ -111,6 +111,8 @@ vibeguard apply --safe --dry-run --session 2026-05-19-fix-login-redirect-bug
 vibeguard apply --safe --session 2026-05-19-fix-login-redirect-bug
 ```
 
+`review --summary` adds an intent-based explanation: task intent, expected changes, suspicious changes, risk reasons, and next steps.
+
 Apply only selected safe files:
 
 ```bash

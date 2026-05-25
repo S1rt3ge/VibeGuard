@@ -323,7 +323,7 @@ async function main(argv) {
       const payload = createReviewPayload(result);
       const gate = createRiskGate(result.score, options["fail-on-risk"]);
       const summary = options.summary
-        ? buildReviewDecisionSummary(result.review, result.score)
+        ? buildReviewDecisionSummary(result.review, result.score, { task: result.session.task })
         : null;
       const reviewPayload = {
         ...payload,
