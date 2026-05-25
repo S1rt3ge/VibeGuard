@@ -43,6 +43,8 @@ import { evaluateCommand } from "../../../packages/context/src/command-guard.js"
 import { reviewChanges } from "../../../packages/policy/src/index.js";
 import { scoreReview } from "../../../packages/risk-engine/src/index.js";
 import {
+  buildReviewDecisionSummary,
+  formatReviewDecisionSummary,
   formatCommandDecision,
   formatCommandHistory,
   formatCheckHistory,
@@ -269,7 +271,14 @@ async function main(argv) {
       });
       const payload = createReviewPayload(result);
       const gate = createRiskGate(result.score, options["fail-on-risk"]);
-      const reviewPayload = gate ? { ...payload, gate } : payload;
+      const summary = options.summary
+        ? buildReviewDecisionSummary(result.review, result.score)
+        : null;
+      const reviewPayload = {
+        ...payload,
+        ...(summary ? { summary } : {}),
+        ...(gate ? { gate } : {}),
+      };
       const reviewPath = options.save
         ? await saveReviewArtifact(options.root ?? process.cwd(), reviewPayload)
         : "";
@@ -280,6 +289,9 @@ async function main(argv) {
         });
       } else {
         console.log(formatReviewSummary(result.review, result.score));
+        if (summary) {
+          console.log(formatReviewDecisionSummary(summary));
+        }
         if (gate) {
           console.log(formatRiskGate(gate, result.score.risk.level));
         }
@@ -299,6 +311,7 @@ async function main(argv) {
       const review = reviewChanges(files, policy);
       const score = scoreReview(review);
       const gate = createRiskGate(score, options["fail-on-risk"]);
+      const summary = options.summary ? buildReviewDecisionSummary(review, score) : null;
       if (options.json) {
         printJson({
           schemaVersion: "0.1",
@@ -306,10 +319,14 @@ async function main(argv) {
           files,
           review,
           score,
+          ...(summary ? { summary } : {}),
           ...(gate ? { gate } : {}),
         });
       } else {
         console.log(formatReviewSummary(review, score));
+        if (summary) {
+          console.log(formatReviewDecisionSummary(summary));
+        }
         if (gate) {
           console.log(formatRiskGate(gate, score.risk.level));
         }
@@ -818,8 +835,8 @@ Commands:
   vibeguard ci annotate (--latest|--capsule <path>) [--review <path>|--review-latest] [--root <path>]
   vibeguard context build "<task>" [--include <csv>] [--root <path>] [--json]
   vibeguard debt report [--days <n>] [--root <path>] [--json]
-  vibeguard review --files <csv> [--allow <csv>] [--json] [--fail-on-risk <low|medium|high>]
-  vibeguard review --session <id> [--allow <csv>] [--root <path>] [--json] [--save] [--fail-on-risk <low|medium|high>]
+  vibeguard review --files <csv> [--allow <csv>] [--summary] [--json] [--fail-on-risk <low|medium|high>]
+  vibeguard review --session <id> [--allow <csv>] [--root <path>] [--summary] [--json] [--save] [--fail-on-risk <low|medium|high>]
   vibeguard apply --safe --session <id> [--dry-run] [--files <csv>] [--allow <csv>] [--root <path>] [--json]
   vibeguard rollback --session <id> [--apply <apply-id>] [--root <path>] [--json]
   vibeguard capsule list [--root <path>] [--json]

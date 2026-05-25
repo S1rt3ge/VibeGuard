@@ -23,6 +23,102 @@ export function formatReviewSummary(review, score) {
   return lines.join("\n");
 }
 
+export function buildReviewDecisionSummary(review, score) {
+  const counts = {
+    blocked: review.blocked.length,
+    approvalRequired: review.approvalRequired.length,
+    reviewable: review.reviewable.length,
+  };
+  const decision = reviewDecision(counts);
+
+  return {
+    decision,
+    headline: reviewHeadline(decision),
+    counts,
+    risk: score.risk.level,
+    why: reviewWhy(score),
+    next: reviewNextSteps(decision),
+  };
+}
+
+export function formatReviewDecisionSummary(summary) {
+  const lines = [
+    "Decision summary:",
+    `  Decision: ${summary.decision}`,
+    `  Headline: ${summary.headline}`,
+    "  Why:",
+  ];
+
+  for (const item of summary.why) {
+    lines.push(`    - ${item}`);
+  }
+
+  lines.push("  Next:");
+  for (const item of summary.next) {
+    lines.push(`    - ${item}`);
+  }
+
+  return lines.join("\n");
+}
+
+function reviewDecision(counts) {
+  if (counts.blocked > 0) {
+    return "blocked";
+  }
+  if (counts.approvalRequired > 0) {
+    return "approval_required";
+  }
+  if (counts.reviewable > 0) {
+    return "reviewable";
+  }
+  return "clean";
+}
+
+function reviewHeadline(decision) {
+  if (decision === "blocked") {
+    return "High risk: blocked files need review before apply.";
+  }
+  if (decision === "approval_required") {
+    return "Approval required: sensitive changes need review before apply.";
+  }
+  if (decision === "reviewable") {
+    return "Reviewable changes are ready for dry-run before apply.";
+  }
+  return "No changes detected.";
+}
+
+function reviewWhy(score) {
+  if (score.slop.problems.length > 0) {
+    return score.slop.problems;
+  }
+  if (score.risk.reasons.length > 0) {
+    return score.risk.reasons;
+  }
+  return ["No risk signals detected."];
+}
+
+function reviewNextSteps(decision) {
+  if (decision === "blocked") {
+    return [
+      "Preview reviewable files with apply --safe --dry-run.",
+      "Inspect blocked files before applying.",
+    ];
+  }
+  if (decision === "approval_required") {
+    return [
+      "Review approval-required changes before applying.",
+      "Use apply --safe --dry-run to preview reviewable files.",
+    ];
+  }
+  if (decision === "reviewable") {
+    return [
+      "Run apply --safe --dry-run to preview writes.",
+      "Run apply --safe when ready.",
+    ];
+  }
+  return ["No apply needed."];
+}
+
 export function formatCommandDecision(decision) {
   const reasons = decision.reasons.length > 0 ? ` (${decision.reasons.join(", ")})` : "";
   return `${decision.decision}${reasons}`;

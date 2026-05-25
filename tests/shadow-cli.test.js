@@ -117,6 +117,31 @@ test("CLI review classifies changed files and reports risk", () => {
   assert.match(result.stdout, /Risk: high/);
 });
 
+test("CLI review --summary explains decision and next steps", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      cliPath,
+      "review",
+      "--files",
+      "app/billing/page.tsx,.env.local,package-lock.json",
+      "--allow",
+      "app/billing/**",
+      "--summary",
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Decision summary:/);
+  assert.match(result.stdout, /Decision: blocked/);
+  assert.match(result.stdout, /Headline: High risk: blocked files need review before apply\./);
+  assert.match(result.stdout, /1 blocked file touched/);
+  assert.match(result.stdout, /1 approval-required change/);
+  assert.match(result.stdout, /Preview reviewable files with apply --safe --dry-run\./);
+  assert.match(result.stdout, /Inspect blocked files before applying\./);
+});
+
 test("CLI review --fail-on-risk exits non-zero when risk crosses threshold", () => {
   const result = spawnSync(
     process.execPath,

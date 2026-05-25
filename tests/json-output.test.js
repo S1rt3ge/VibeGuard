@@ -130,6 +130,38 @@ test("CLI manual review --json prints parseable review payload", () => {
   assert.equal(payload.score.risk.level, "high");
 });
 
+test("CLI manual review --json --summary includes decision summary", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      cliPath,
+      "review",
+      "--files",
+      "src/app.js,.env.local,package-lock.json",
+      "--allow",
+      "src/**",
+      "--summary",
+      "--json",
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  const payload = JSON.parse(result.stdout);
+
+  assert.equal(payload.summary.decision, "blocked");
+  assert.equal(payload.summary.headline, "High risk: blocked files need review before apply.");
+  assert.deepEqual(payload.summary.counts, {
+    blocked: 1,
+    approvalRequired: 1,
+    reviewable: 1,
+  });
+  assert.equal(payload.summary.risk, "high");
+  assert.ok(payload.summary.why.includes("1 blocked file touched"));
+  assert.ok(payload.summary.why.includes("1 approval-required change"));
+  assert.ok(payload.summary.next.includes("Preview reviewable files with apply --safe --dry-run."));
+});
+
 test("CLI manual review --json --fail-on-risk emits payload before failing gate", () => {
   const result = spawnSync(
     process.execPath,
@@ -142,6 +174,7 @@ test("CLI manual review --json --fail-on-risk emits payload before failing gate"
       "src/**",
       "--fail-on-risk",
       "medium",
+      "--summary",
       "--json",
     ],
     { encoding: "utf8" },
@@ -158,6 +191,8 @@ test("CLI manual review --json --fail-on-risk emits payload before failing gate"
     threshold: "medium",
     failed: true,
   });
+  assert.equal(payload.summary.decision, "blocked");
+  assert.equal(payload.summary.risk, "high");
 });
 
 test("CLI session review --json and status --json expose quarantine state", async () => {
