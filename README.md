@@ -82,13 +82,19 @@ Created shadow session 2026-05-19-fix-login-redirect-bug
 Shadow workspace: /your-project/.vibeguard/shadows/2026-05-19-fix-login-redirect-bug
 
 Next:
-  1. Open the shadow workspace in your AI coding tool.
-  2. Let the agent edit files there, not in your real repo.
-  3. Run: vibeguard review --session 2026-05-19-fix-login-redirect-bug
-  4. Run: vibeguard apply --safe --session 2026-05-19-fix-login-redirect-bug
+  1. Run Codex in the shadow workspace:
+     vibeguard run --agent codex --session 2026-05-19-fix-login-redirect-bug
+  2. Or open the shadow workspace in your AI coding tool.
+  3. Let the agent edit files there, not in your real repo.
+  4. Run: vibeguard review --session 2026-05-19-fix-login-redirect-bug
+  5. Run: vibeguard apply --safe --session 2026-05-19-fix-login-redirect-bug
 ```
 
-Open that shadow workspace in your AI coding tool and let the agent edit there. Your real repo stays untouched.
+Run Codex through VibeGuard, or open the shadow workspace manually in another AI coding tool. Your real repo stays untouched.
+
+```bash
+vibeguard run --agent codex --session 2026-05-19-fix-login-redirect-bug
+```
 
 After the agent finishes:
 
@@ -120,6 +126,7 @@ vibeguard doctor
 vibeguard init
 vibeguard task "add billing page" --allow "app/billing/**,lib/stripe/**,tests/billing/**"
 vibeguard task "continue local WIP" --allow "src/**,tests/**" --allow-dirty
+vibeguard run --agent codex --session "<session-id>"
 vibeguard status --session "<session-id>"
 vibeguard review --session "<session-id>" --summary
 vibeguard review --session "<session-id>" --fail-on-risk medium
@@ -164,6 +171,7 @@ vibeguard version --json
 vibeguard doctor --json
 vibeguard init --json
 vibeguard task "fix login bug" --allow "app/**,tests/**" --json
+vibeguard run --agent codex --session "<session-id>" --dry-run --json
 vibeguard context build "fix login bug" --include "app/**,tests/**" --json
 vibeguard status --session "<session-id>" --json
 vibeguard review --session "<session-id>" --summary --json
@@ -209,7 +217,7 @@ CLI `--allow` scope takes precedence over config scope for a single task.
 
 ## Current Status
 
-VibeGuard v0.1 is an early CLI prototype. It is useful for local shadow workspace review flows, but it does not yet run your AI agent for you. Point your agent at the generated shadow workspace, then let VibeGuard review and apply the result.
+VibeGuard v0.1 is an early CLI prototype. It can launch Codex inside a shadow workspace, then review and apply the result. Other AI coding tools can still be used manually by opening the generated shadow workspace.
 
 ## Development
 

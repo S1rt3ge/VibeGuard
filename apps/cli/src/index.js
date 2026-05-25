@@ -10,6 +10,7 @@ import {
   readCapsuleArtifact,
   saveCapsule,
 } from "../../../packages/core/src/capsule-store.js";
+import { runAgentSession } from "../../../packages/core/src/agent-runner.js";
 import { initializeProject, loadProjectPolicy } from "../../../packages/core/src/project.js";
 import {
   buildContextBundle,
@@ -119,12 +120,36 @@ async function main(argv) {
       console.log(`Shadow workspace: ${session.shadowPath}`);
       console.log("");
       console.log("Next:");
-      console.log("  1. Open the shadow workspace in your AI coding tool.");
-      console.log("  2. Let the agent edit files there, not in your real repo.");
-      console.log(`  3. Run: vibeguard review --session ${session.id}`);
-      console.log(`  4. Run: vibeguard apply --safe --session ${session.id}`);
+      console.log("  1. Run Codex in the shadow workspace:");
+      console.log(`     vibeguard run --agent codex --session ${session.id}`);
+      console.log("  2. Open the shadow workspace in your AI coding tool if you use another agent.");
+      console.log("  3. Let the agent edit files there, not in your real repo.");
+      console.log(`  4. Run: vibeguard review --session ${session.id}`);
+      console.log(`  5. Run: vibeguard apply --safe --session ${session.id}`);
     }
     return 0;
+  }
+
+  if (command === "run") {
+    const { optionArgs, passthroughArgs } = splitPassthroughArgs(args);
+    const options = parseOptions(optionArgs);
+    if (options.json && !optionFlag(options["dry-run"])) {
+      throw new Error("run --json is only supported with --dry-run in this slice");
+    }
+    const result = await runAgentSession({
+      repoRoot: options.root ?? process.cwd(),
+      sessionId: options.session,
+      agent: requireOption(options.agent, "agent"),
+      args: passthroughArgs,
+      dryRun: optionFlag(options["dry-run"]),
+    });
+
+    if (options.json) {
+      printJson(createRunPayload(result));
+    } else {
+      console.log(formatRunResult(result));
+    }
+    return result.exitCode ?? 0;
   }
 
   if (command === "status") {
@@ -514,6 +539,17 @@ function parseOptionalNonNegativeNumberOption(value, name) {
   return number;
 }
 
+function splitPassthroughArgs(args) {
+  const separatorIndex = args.indexOf("--");
+  if (separatorIndex === -1) {
+    return { optionArgs: args, passthroughArgs: [] };
+  }
+  return {
+    optionArgs: args.slice(0, separatorIndex),
+    passthroughArgs: args.slice(separatorIndex + 1),
+  };
+}
+
 const RISK_LEVELS = ["low", "medium", "high"];
 const RISK_LEVEL_ORDER = new Map(RISK_LEVELS.map((level, index) => [level, index]));
 
@@ -732,6 +768,30 @@ function createTaskPayload(session) {
   };
 }
 
+function createRunPayload(result) {
+  return {
+    schemaVersion: "0.1",
+    command: "run",
+    run: result,
+  };
+}
+
+function formatRunResult(result) {
+  const lines = [
+    result.dryRun ? "Agent run preview" : "Agent run complete",
+    `Session: ${result.sessionId}`,
+    `Agent: ${result.agent}`,
+    `Working directory: ${result.cwd}`,
+    `Command: ${result.commandText}`,
+  ];
+
+  if (!result.dryRun) {
+    lines.push(`Exit code: ${result.exitCode}`);
+  }
+
+  return lines.join("\n");
+}
+
 function createContextBuildPayload(bundle, bundlePath) {
   return {
     schemaVersion: "0.1",
@@ -817,7 +877,7 @@ Quick start:
   vibeguard doctor
   vibeguard init
   vibeguard task "fix login bug" --allow "app/**,lib/**,tests/**"
-  # Open the printed shadow workspace in your AI coding tool.
+  vibeguard run --agent codex --session "<session-id>"
   vibeguard review --session "<session-id>"
   vibeguard apply --safe --session "<session-id>"
 
@@ -827,6 +887,7 @@ Commands:
   vibeguard doctor [--root <path>] [--json]
   vibeguard init [--root <path>] [--json]
   vibeguard task "<task>" [--root <path>] [--session <id>] [--allow <csv>] [--allow-dirty] [--json]
+  vibeguard run --agent codex [--session <id>] [--root <path>] [--dry-run] [--json] [-- <args>]
   vibeguard status [--session <id>] [--root <path>] [--json]
   vibeguard guard-command [--session <id>] "<command>"
   vibeguard command history --session <id> [--root <path>]
