@@ -32,6 +32,9 @@ export async function appendCheckRecord(repoRoot, sessionId, check, options = {}
     command: String(check?.command ?? "").trim(),
     summary: String(check?.summary ?? "").trim(),
     durationMs,
+    exitCode: normalizeExitCode(check?.exitCode),
+    stdoutTail: String(check?.stdoutTail ?? ""),
+    stderrTail: String(check?.stderrTail ?? ""),
     createdAt: (options.now ?? new Date()).toISOString(),
   };
 
@@ -82,6 +85,18 @@ function normalizeDuration(value) {
   const number = Number(value);
   if (!Number.isFinite(number) || number < 0) {
     throw new Error("durationMs must be a non-negative number");
+  }
+  return number;
+}
+
+function normalizeExitCode(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const number = Number(value);
+  if (!Number.isInteger(number)) {
+    throw new Error("exitCode must be an integer or null");
   }
   return number;
 }

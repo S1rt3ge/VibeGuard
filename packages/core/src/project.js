@@ -13,6 +13,7 @@ export async function initializeProject(repoRoot = process.cwd()) {
     schemaVersion: "0.1",
     product: "vibeguard",
     policy: createDefaultPolicy(),
+    checks: [],
   };
 
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
@@ -73,6 +74,33 @@ export async function loadProjectPolicy(repoRoot = process.cwd(), overrides = {}
     ),
     riskZones: resolveRiskZones(configPolicy.riskZones, defaults.riskZones),
   };
+}
+
+export async function loadProjectChecks(repoRoot = process.cwd()) {
+  const config = await loadProjectConfig(repoRoot);
+  const checks = config.checks ?? [];
+
+  if (!Array.isArray(checks)) {
+    throw new Error("checks must be an array");
+  }
+
+  return checks.map((check, index) => {
+    if (!check || typeof check !== "object" || Array.isArray(check)) {
+      throw new Error(`checks[${index}] must be an object`);
+    }
+
+    const name = String(check.name ?? "").trim();
+    const command = String(check.command ?? "").trim();
+
+    if (!name) {
+      throw new Error(`checks[${index}].name is required`);
+    }
+    if (!command) {
+      throw new Error(`checks[${index}].command is required`);
+    }
+
+    return { name, command };
+  });
 }
 
 function resolveArrayPolicyField(name, value, fallback) {

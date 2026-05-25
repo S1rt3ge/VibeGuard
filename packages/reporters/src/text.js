@@ -199,6 +199,22 @@ export function formatCheckHistory(sessionId, records) {
   return lines.join("\n");
 }
 
+export function formatCheckRun(result) {
+  const lines = [
+    `Check run: ${result.ok ? "passed" : "failed"}`,
+    `Session: ${result.session.id}`,
+    `Checks: ${result.checks.length}`,
+  ];
+
+  for (const record of result.checks) {
+    const exit = record.exitCode === null ? "skipped" : `exit ${record.exitCode}`;
+    const summary = record.summary ? ` - ${record.summary}` : "";
+    lines.push(`${record.status} ${record.name} (${exit})${summary}`);
+  }
+
+  return lines.join("\n");
+}
+
 export function formatSessionStatus(status) {
   return [
     `Session: ${status.session.id}`,

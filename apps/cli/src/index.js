@@ -20,6 +20,7 @@ import {
   appendCheckRecord,
   readCheckRecords,
 } from "../../../packages/core/src/check-log.js";
+import { runSessionChecks } from "../../../packages/core/src/check-runner.js";
 import { validateCiArtifacts } from "../../../packages/core/src/ci-validator.js";
 import {
   appendCommandRecord,
@@ -49,6 +50,7 @@ import {
   formatCommandDecision,
   formatCommandHistory,
   formatCheckHistory,
+  formatCheckRun,
   formatCiValidation,
   formatCiAnnotations,
   formatCapsuleList,
@@ -127,8 +129,9 @@ async function main(argv) {
       console.log(`     vibeguard run --agent codex --session ${session.id}`);
       console.log("  2. Open the shadow workspace in your AI coding tool if you use another agent.");
       console.log("  3. Let the agent edit files there, not in your real repo.");
-      console.log(`  4. Run: vibeguard review --session ${session.id}`);
-      console.log(`  5. Run: vibeguard apply --safe --session ${session.id}`);
+      console.log(`  4. Run: vibeguard check run --session ${session.id} --name unit --command "npm test"`);
+      console.log(`  5. Run: vibeguard review --session ${session.id}`);
+      console.log(`  6. Run: vibeguard apply --safe --session ${session.id}`);
     }
     return 0;
   }
@@ -217,13 +220,32 @@ async function main(argv) {
       return 0;
     }
 
+    if (subcommand === "run") {
+      const result = await runSessionChecks({
+        repoRoot: options.root ?? process.cwd(),
+        sessionId: options.session,
+        checks: options.command
+          ? [{
+              name: requireOption(options.name, "name"),
+              command: requireOption(options.command, "command"),
+            }]
+          : undefined,
+      });
+      if (options.json) {
+        printJson(createCheckRunPayload(result));
+      } else {
+        console.log(formatCheckRun(result));
+      }
+      return result.ok ? 0 : 2;
+    }
+
     if (subcommand === "history") {
       const records = await readCheckRecords(options.root ?? process.cwd(), options.session);
       console.log(formatCheckHistory(options.session, records));
       return 0;
     }
 
-    throw new Error("Unknown check command. Use: vibeguard check record|history");
+    throw new Error("Unknown check command. Use: vibeguard check record|run|history");
   }
 
   if (command === "ci") {
@@ -781,6 +803,16 @@ function createRunPayload(result) {
   };
 }
 
+function createCheckRunPayload(result) {
+  return {
+    schemaVersion: "0.1",
+    command: "check_run",
+    sessionId: result.session.id,
+    ok: result.ok,
+    checks: result.checks,
+  };
+}
+
 function formatRunResult(result) {
   const lines = [
     result.dryRun ? "Agent run preview" : "Agent run complete",
@@ -883,6 +915,7 @@ Quick start:
   vibeguard init
   vibeguard task "fix login bug" --allow "app/**,lib/**,tests/**"
   vibeguard run --agent codex --session "<session-id>"
+  vibeguard check run --session "<session-id>" --name unit --command "npm test"
   vibeguard review --session "<session-id>"
   vibeguard apply --safe --session "<session-id>"
 
@@ -897,6 +930,7 @@ Commands:
   vibeguard guard-command [--session <id>] "<command>"
   vibeguard command history --session <id> [--root <path>]
   vibeguard check record --session <id> --name <name> --status <passed|failed|skipped> [--command <command>] [--summary <text>] [--duration-ms <n>] [--root <path>]
+  vibeguard check run --session <id> [--name <name> --command <command>] [--root <path>] [--json]
   vibeguard check history --session <id> [--root <path>]
   vibeguard ci validate --capsule <path> [--review <path>] [--root <path>] [--json]
   vibeguard ci validate --latest [--review-latest] [--root <path>] [--json]

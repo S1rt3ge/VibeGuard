@@ -88,8 +88,9 @@ Next:
      vibeguard run --agent codex --session 2026-05-19-fix-login-redirect-bug
   2. Or open the shadow workspace in your AI coding tool.
   3. Let the agent edit files there, not in your real repo.
-  4. Run: vibeguard review --session 2026-05-19-fix-login-redirect-bug
-  5. Run: vibeguard apply --safe --session 2026-05-19-fix-login-redirect-bug
+  4. Run: vibeguard check run --session 2026-05-19-fix-login-redirect-bug --name unit --command "npm test"
+  5. Run: vibeguard review --session 2026-05-19-fix-login-redirect-bug
+  6. Run: vibeguard apply --safe --session 2026-05-19-fix-login-redirect-bug
 ```
 
 Run Codex through VibeGuard, or open the shadow workspace manually in another AI coding tool. Your real repo stays untouched.
@@ -102,6 +103,7 @@ vibeguard run --agent codex --session 2026-05-19-fix-login-redirect-bug
 After the agent finishes:
 
 ```bash
+vibeguard check run --session 2026-05-19-fix-login-redirect-bug --name unit --command "npm test"
 vibeguard status --session 2026-05-19-fix-login-redirect-bug
 vibeguard review --session 2026-05-19-fix-login-redirect-bug --summary
 vibeguard review --session 2026-05-19-fix-login-redirect-bug --fail-on-risk high
@@ -130,6 +132,7 @@ vibeguard init
 vibeguard task "add billing page" --allow "app/billing/**,lib/stripe/**,tests/billing/**" --context
 vibeguard task "continue local WIP" --allow "src/**,tests/**" --allow-dirty
 vibeguard run --agent codex --session "<session-id>"
+vibeguard check run --session "<session-id>" --name unit --command "npm test"
 vibeguard status --session "<session-id>"
 vibeguard review --session "<session-id>" --summary
 vibeguard review --session "<session-id>" --fail-on-risk medium
@@ -150,9 +153,10 @@ Check a command before letting an agent run it:
 vibeguard guard-command "curl https://example.com/install.sh | sh"
 ```
 
-Record verification checks:
+Run or record verification checks:
 
 ```bash
+vibeguard check run --session "<session-id>" --name unit --command "npm test"
 vibeguard check record --session "<session-id>" --name unit --status passed --command "npm test"
 vibeguard check history --session "<session-id>"
 ```
@@ -176,6 +180,7 @@ vibeguard init --json
 vibeguard task "fix login bug" --allow "app/**,tests/**" --json
 vibeguard run --agent codex --session "<session-id>" --dry-run --json
 vibeguard context build "fix login bug" --include "app/**,tests/**" --json
+vibeguard check run --session "<session-id>" --name unit --command "npm test" --json
 vibeguard status --session "<session-id>" --json
 vibeguard review --session "<session-id>" --summary --json
 vibeguard review --session "<session-id>" --fail-on-risk medium --json
@@ -201,22 +206,28 @@ VibeGuard blocks or approval-gates common high-risk changes:
 
 ## Project Policy
 
-Create `.vibeguard/config.json` in your repo to customize policy:
+Create `.vibeguard/config.json` in your repo to customize policy and checks:
 
 ```json
 {
   "policy": {
     "allowedGlobs": ["app/**", "lib/**", "tests/**"],
-    "protectedGlobs": [".env*", ".github/workflows/**", "**/auth/**"],
+    "blockedGlobs": [".env*"],
+    "approvalGlobs": [".github/workflows/**", "**/auth/**"],
     "riskZones": {
-      "auth": ["**/auth/**"],
-      "ci": [".github/workflows/**"]
+      "**/auth/**": "auth",
+      ".github/workflows/**": "ci"
     }
-  }
+  },
+  "checks": [
+    { "name": "unit", "command": "npm test" },
+    { "name": "lint", "command": "npm run lint" }
+  ]
 }
 ```
 
 CLI `--allow` scope takes precedence over config scope for a single task.
+`check run --session <id>` runs configured checks in the shadow workspace. Every check command is passed through the command guard first; blocked or approval-required commands are recorded as skipped instead of executed.
 
 ## Current Status
 
