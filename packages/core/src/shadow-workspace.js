@@ -10,10 +10,15 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 
+import {
+  buildContextBundle,
+  saveContextBundle,
+} from "../../context/src/context-builder.js";
 import { createApplyRecord, rollbackApplyRecord } from "./apply-log.js";
 import { createCapsule, saveCapsule } from "./capsule-store.js";
 import { readCheckRecords } from "./check-log.js";
 import { readCommandRecords } from "./command-log.js";
+import { summarizeContextBundle } from "./context-summary.js";
 import { appendDebtEntry, appendRollbackDebtEntry } from "./debt-ledger.js";
 import { assertCleanGitWorktree, inspectGitWorktree } from "./git-status.js";
 import {
@@ -52,6 +57,8 @@ export async function createShadowSession({
   model = "unknown",
   allowedGlobs = [],
   allowDirty = false,
+  buildContext = false,
+  contextIncludeGlobs,
   now = new Date(),
 } = {}) {
   const trimmedTask = String(task ?? "").trim();
@@ -73,6 +80,14 @@ export async function createShadowSession({
   await mkdir(sessionsDir, { recursive: true });
   const manifest = await copyWorkspaceSnapshot(root, shadowPath);
   const handoff = createHandoffMetadata(shadowPath);
+  const context = buildContext
+    ? await createSessionContext({
+        repoRoot: root,
+        task: trimmedTask,
+        includeGlobs: contextIncludeGlobs ?? allowedGlobs,
+        now,
+      })
+    : null;
 
   const session = {
     schemaVersion: "0.1",
@@ -87,6 +102,7 @@ export async function createShadowSession({
     },
     git,
     handoff,
+    ...(context ? { context } : {}),
     snapshot: {
       excluded: [...SNAPSHOT_EXCLUDES],
       manifest,
@@ -451,6 +467,17 @@ function resolveInside(root, relativePath) {
 
 function isSnapshotExcluded(relativePath) {
   return SNAPSHOT_EXCLUDES.some((glob) => matchesSnapshotGlob(relativePath, glob));
+}
+
+async function createSessionContext({ repoRoot, task, includeGlobs, now }) {
+  const bundle = await buildContextBundle({
+    repoRoot,
+    task,
+    includeGlobs,
+    now,
+  });
+  const bundlePath = await saveContextBundle(repoRoot, bundle);
+  return summarizeContextBundle(bundle, bundlePath);
 }
 
 function isDiffExcluded(relativePath) {

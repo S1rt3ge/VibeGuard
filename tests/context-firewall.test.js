@@ -17,6 +17,7 @@ import {
   buildContextBundle,
   saveContextBundle,
 } from "../packages/context/src/context-builder.js";
+import { createShadowSession } from "../packages/core/src/shadow-workspace.js";
 
 const cliPath = path.resolve("apps/cli/src/index.js");
 
@@ -212,6 +213,123 @@ test("CLI context build --json prints summary without bundled file contents", as
     const saved = JSON.parse(await readFile(payload.bundlePath, "utf8"));
     assert.equal(saved.included[0].content.includes(fakeOpenAiKey), false);
     assert.ok(saved.included[0].content.includes("[REDACTED:API_KEY]"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("createShadowSession can attach a redacted context bundle summary", async () => {
+  const root = await createContextFixture();
+
+  try {
+    const fakeOpenAiKey = ["sk", "proj", "abcdefghijklmnopqrstuvwxyz"].join("-");
+    await writeFile(
+      path.join(root, "lib", "auth", "session.ts"),
+      [
+        "export const session = true;",
+        `const key = '${fakeOpenAiKey}';`,
+        "",
+      ].join("\n"),
+    );
+
+    const session = await createShadowSession({
+      repoRoot: root,
+      task: "fix login bug",
+      sessionId: "context-session",
+      allowedGlobs: ["app/login/**"],
+      buildContext: true,
+      contextIncludeGlobs: ["lib/auth/**"],
+      now: new Date("2026-05-25T10:00:00.000Z"),
+    });
+    const savedSession = JSON.parse(await readFile(session.sessionPath, "utf8"));
+    const savedBundle = JSON.parse(await readFile(session.context.bundlePath, "utf8"));
+    const handoff = await readFile(session.handoff.path, "utf8");
+
+    assert.match(session.context.bundlePath, /fix-login-bug\.json$/);
+    assert.deepEqual(session.context.bundle.includeGlobs, ["lib/auth/**"]);
+    assert.deepEqual(session.context.bundle.included, ["lib/auth/session.ts"]);
+    assert.equal(session.context.bundle.stats.included, 1);
+    assert.equal(session.context.bundle.stats.redactions, 1);
+    assert.equal(JSON.stringify(session.context).includes(fakeOpenAiKey), false);
+    assert.equal(JSON.stringify(savedSession.context).includes("export const session"), false);
+    assert.equal(savedBundle.included[0].content.includes(fakeOpenAiKey), false);
+    assert.ok(savedBundle.included[0].content.includes("[REDACTED:API_KEY]"));
+    assert.match(handoff, /Context bundle:/);
+    assert.match(handoff, /Included files: 1/);
+    assert.match(handoff, /Redactions: 1/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("CLI task --context uses allow scope as default context include globs", async () => {
+  const root = await createContextFixture();
+
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [
+        cliPath,
+        "task",
+        "fix login bug",
+        "--root",
+        root,
+        "--session",
+        "cli-context-session",
+        "--allow",
+        "app/login/**,tests/auth/**",
+        "--context",
+        "--json",
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+
+    assert.deepEqual(payload.session.policy.allowedGlobs, ["app/login/**", "tests/auth/**"]);
+    assert.deepEqual(payload.session.context.bundle.includeGlobs, ["app/login/**", "tests/auth/**"]);
+    assert.deepEqual(
+      payload.session.context.bundle.included.sort(),
+      ["app/login/page.tsx", "tests/auth/login.test.ts"],
+    );
+    assert.equal(JSON.stringify(payload).includes("export default function Page"), false);
+    await access(payload.session.context.bundlePath);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("CLI task --context --include overrides context scope only", async () => {
+  const root = await createContextFixture();
+
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [
+        cliPath,
+        "task",
+        "fix login bug",
+        "--root",
+        root,
+        "--session",
+        "cli-context-include-session",
+        "--allow",
+        "app/login/**",
+        "--context",
+        "--include",
+        "lib/auth/**",
+        "--json",
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+
+    assert.deepEqual(payload.session.policy.allowedGlobs, ["app/login/**"]);
+    assert.deepEqual(payload.session.context.bundle.includeGlobs, ["lib/auth/**"]);
+    assert.deepEqual(payload.session.context.bundle.included, ["lib/auth/session.ts"]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

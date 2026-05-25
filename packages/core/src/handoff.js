@@ -30,6 +30,10 @@ export function formatTaskHandoff(session) {
     `Shadow workspace: ${session.shadowPath}`,
     `Allowed scope: ${allowedScope}`,
     "",
+    "## Context Bundle",
+    "",
+    ...formatContextSection(session),
+    "",
     "## Safety Rules",
     "",
     "- Edit only this shadow workspace.",
@@ -46,4 +50,27 @@ export function formatTaskHandoff(session) {
     `- vibeguard apply --safe --session ${session.id}`,
     "",
   ].join("\n");
+}
+
+function formatContextSection(session) {
+  if (!session.context) {
+    const allowedGlobs = session.policy?.allowedGlobs ?? [];
+    const includeHint = allowedGlobs.length > 0 ? allowedGlobs.join(",") : "<scope>";
+    return [
+      "Context bundle: not generated",
+      `Generate one with: vibeguard context build "${session.task}" --include "${includeHint}"`,
+    ];
+  }
+
+  return [
+    `Context bundle: ${session.context.bundlePath}`,
+    `Context include globs: ${formatList(session.context.bundle.includeGlobs)}`,
+    `Included files: ${session.context.bundle.stats.included}`,
+    `Excluded files: ${session.context.bundle.stats.excluded}`,
+    `Redactions: ${session.context.bundle.stats.redactions}`,
+  ];
+}
+
+function formatList(values) {
+  return values.length > 0 ? values.join(", ") : "not declared";
 }

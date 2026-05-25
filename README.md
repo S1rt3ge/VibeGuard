@@ -61,10 +61,11 @@ cd your-project
 vibeguard version
 vibeguard doctor
 vibeguard init
-vibeguard task "fix login redirect bug" --allow "app/**,lib/auth/**,tests/**"
+vibeguard task "fix login redirect bug" --allow "app/**,lib/auth/**,tests/**" --context
 ```
 
 `task` refuses to start from a dirty Git worktree by default. Commit or stash local changes first, or use `--allow-dirty` when you intentionally want the dirty baseline recorded in the session.
+Add `--context` to create a redacted context bundle during task setup. By default it uses the `--allow` scope; use `--include` when the context scope should differ from apply scope.
 
 `init` prints the next command to run:
 
@@ -126,7 +127,7 @@ vibeguard rollback --session 2026-05-19-fix-login-redirect-bug
 vibeguard version
 vibeguard doctor
 vibeguard init
-vibeguard task "add billing page" --allow "app/billing/**,lib/stripe/**,tests/billing/**"
+vibeguard task "add billing page" --allow "app/billing/**,lib/stripe/**,tests/billing/**" --context
 vibeguard task "continue local WIP" --allow "src/**,tests/**" --allow-dirty
 vibeguard run --agent codex --session "<session-id>"
 vibeguard status --session "<session-id>"
