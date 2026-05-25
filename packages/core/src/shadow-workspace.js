@@ -16,6 +16,11 @@ import { readCheckRecords } from "./check-log.js";
 import { readCommandRecords } from "./command-log.js";
 import { appendDebtEntry, appendRollbackDebtEntry } from "./debt-ledger.js";
 import { assertCleanGitWorktree, inspectGitWorktree } from "./git-status.js";
+import {
+  HANDOFF_RELATIVE_PATH,
+  createHandoffMetadata,
+  writeTaskHandoff,
+} from "./handoff.js";
 import { loadProjectPolicy } from "./project.js";
 import { normalizeRepoPath, reviewChanges } from "../../policy/src/index.js";
 import { scoreReview } from "../../risk-engine/src/index.js";
@@ -33,6 +38,10 @@ const SNAPSHOT_EXCLUDES = [
   ".nyc_output/**",
   ".env*",
   "**/.env*",
+];
+
+const DIFF_EXCLUDES = [
+  HANDOFF_RELATIVE_PATH,
 ];
 
 export async function createShadowSession({
@@ -63,6 +72,7 @@ export async function createShadowSession({
   await mkdir(shadowPath, { recursive: true });
   await mkdir(sessionsDir, { recursive: true });
   const manifest = await copyWorkspaceSnapshot(root, shadowPath);
+  const handoff = createHandoffMetadata(shadowPath);
 
   const session = {
     schemaVersion: "0.1",
@@ -76,6 +86,7 @@ export async function createShadowSession({
       allowedGlobs: [...allowedGlobs],
     },
     git,
+    handoff,
     snapshot: {
       excluded: [...SNAPSHOT_EXCLUDES],
       manifest,
@@ -84,6 +95,7 @@ export async function createShadowSession({
     status: "created",
   };
 
+  await writeTaskHandoff(session);
   await writeFile(sessionPath, `${JSON.stringify(session, null, 2)}\n`, "utf8");
 
   return {
@@ -97,7 +109,9 @@ export async function analyzeShadowDiff(repoRoot, shadowPath, snapshotManifest =
   const shadow = path.resolve(shadowPath);
   const manifest = snapshotManifest ?? (await buildManifest(root));
   const shadowManifest = await buildManifest(shadow, { includeAll: true });
-  const paths = [...new Set([...Object.keys(manifest), ...Object.keys(shadowManifest)])].sort();
+  const paths = [...new Set([...Object.keys(manifest), ...Object.keys(shadowManifest)])]
+    .filter((relativePath) => !isDiffExcluded(relativePath))
+    .sort();
   const diff = [];
 
   for (const relativePath of paths) {
@@ -437,6 +451,10 @@ function resolveInside(root, relativePath) {
 
 function isSnapshotExcluded(relativePath) {
   return SNAPSHOT_EXCLUDES.some((glob) => matchesSnapshotGlob(relativePath, glob));
+}
+
+function isDiffExcluded(relativePath) {
+  return DIFF_EXCLUDES.some((glob) => matchesSnapshotGlob(relativePath, glob));
 }
 
 function matchesSnapshotGlob(relativePath, glob) {

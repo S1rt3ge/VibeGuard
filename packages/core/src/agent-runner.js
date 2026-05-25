@@ -45,6 +45,12 @@ export async function runAgentSession({
     executable,
     args: allArgs,
     commandText,
+    ...(session.handoff?.path
+      ? {
+          handoffPath: session.handoff.path,
+          handoffRelativePath: session.handoff.relativePath,
+        }
+      : {}),
     dryRun: Boolean(dryRun),
     exitCode: null,
   };
@@ -60,14 +66,20 @@ export async function runAgentSession({
   }, {
     now,
   });
+  const env = {
+    ...process.env,
+    VIBEGUARD_SESSION_ID: session.id,
+    VIBEGUARD_REPO_ROOT: root,
+    VIBEGUARD_SHADOW_PATH: session.shadowPath,
+  };
+  if (session.handoff?.path) {
+    env.VIBEGUARD_HANDOFF_PATH = session.handoff.path;
+    env.VIBEGUARD_HANDOFF_RELATIVE_PATH = session.handoff.relativePath;
+  }
+
   const child = spawnSync(executable, allArgs, {
     cwd: session.shadowPath,
-    env: {
-      ...process.env,
-      VIBEGUARD_SESSION_ID: session.id,
-      VIBEGUARD_REPO_ROOT: root,
-      VIBEGUARD_SHADOW_PATH: session.shadowPath,
-    },
+    env,
     stdio: "inherit",
   });
 

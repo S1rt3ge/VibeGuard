@@ -118,6 +118,7 @@ async function main(argv) {
     } else {
       console.log(`Created shadow session ${session.id}`);
       console.log(`Shadow workspace: ${session.shadowPath}`);
+      console.log(`Task handoff: ${session.handoff.path}`);
       console.log("");
       console.log("Next:");
       console.log("  1. Run Codex in the shadow workspace:");
@@ -758,6 +759,7 @@ function createTaskPayload(session) {
         allowedGlobs: session.policy?.allowedGlobs ?? [],
       },
       git: session.git,
+      handoff: session.handoff,
       snapshot: {
         excluded: session.snapshot?.excluded ?? [],
         files: Object.keys(session.snapshot?.manifest ?? {}).length,

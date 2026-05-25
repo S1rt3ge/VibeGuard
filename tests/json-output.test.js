@@ -95,10 +95,13 @@ test("CLI task --json prints parseable session payload", async () => {
     assert.equal(payload.session.status, "created");
     assert.match(payload.session.shadowPath, /json-task-session$/);
     assert.match(payload.session.sessionPath, /json-task-session\.json$/);
+    assert.equal(payload.session.handoff.relativePath, "VIBEGUARD_TASK.md");
+    assert.match(payload.session.handoff.path, /VIBEGUARD_TASK\.md$/);
     assert.equal(payload.session.snapshot.files, 2);
     assert.ok(payload.session.snapshot.excluded.includes(".env*"));
     await access(payload.session.sessionPath);
     await access(payload.session.shadowPath);
+    await access(payload.session.handoff.path);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

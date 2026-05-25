@@ -80,6 +80,7 @@ The `task` command prints a shadow workspace path:
 ```text
 Created shadow session 2026-05-19-fix-login-redirect-bug
 Shadow workspace: /your-project/.vibeguard/shadows/2026-05-19-fix-login-redirect-bug
+Task handoff: /your-project/.vibeguard/shadows/2026-05-19-fix-login-redirect-bug/VIBEGUARD_TASK.md
 
 Next:
   1. Run Codex in the shadow workspace:
@@ -91,6 +92,7 @@ Next:
 ```
 
 Run Codex through VibeGuard, or open the shadow workspace manually in another AI coding tool. Your real repo stays untouched.
+The generated `VIBEGUARD_TASK.md` file in the shadow workspace contains the task, allowed scope, safety boundaries, and review/apply commands.
 
 ```bash
 vibeguard run --agent codex --session 2026-05-19-fix-login-redirect-bug

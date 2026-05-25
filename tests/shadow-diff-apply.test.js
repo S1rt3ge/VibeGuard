@@ -34,12 +34,22 @@ test("task snapshots project files while excluding local and secret state", asyn
 
     assert.equal(await readText(path.join(session.shadowPath, "src", "app.js")), "old app\n");
     assert.equal(await exists(path.join(session.shadowPath, "README.md")), true);
+    assert.equal(await exists(path.join(session.shadowPath, "VIBEGUARD_TASK.md")), true);
     assert.equal(await exists(path.join(session.shadowPath, ".env.local")), false);
     assert.equal(await exists(path.join(session.shadowPath, ".git", "config")), false);
     assert.equal(await exists(path.join(session.shadowPath, ".vibeguard")), false);
     assert.equal(await exists(path.join(session.shadowPath, "node_modules", "left-pad", "index.js")), false);
     assert.equal(await exists(path.join(session.shadowPath, "coverage", "summary.json")), false);
     assert.ok(session.snapshot.excluded.includes(".env*"));
+    assert.equal(session.handoff.relativePath, "VIBEGUARD_TASK.md");
+    assert.match(session.handoff.path, /VIBEGUARD_TASK\.md$/);
+    const handoff = await readText(session.handoff.path);
+    assert.match(handoff, /# VibeGuard Task Handoff/);
+    assert.match(handoff, /Task: snapshot repo/);
+    assert.match(handoff, /Session: session-copy/);
+    assert.match(handoff, /Allowed scope: not declared/);
+    assert.match(handoff, /Edit only this shadow workspace/);
+    assert.match(handoff, /vibeguard review --session session-copy --summary/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -65,6 +75,25 @@ test("shadow diff detects added, modified, and deleted files", async () => {
       diff.map((item) => `${item.status}:${item.path}`).sort(),
       ["added:src/new.js", "deleted:docs/usage.md", "modified:src/app.js"],
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("shadow diff ignores generated handoff changes", async () => {
+  const root = await createFixtureRepo();
+
+  try {
+    const session = await createShadowSession({
+      repoRoot: root,
+      task: "handoff only",
+      sessionId: "session-handoff-only",
+    });
+
+    assert.deepEqual(await analyzeShadowDiff(root, session.shadowPath), []);
+
+    await writeFile(path.join(session.shadowPath, "VIBEGUARD_TASK.md"), "agent notes\n");
+    assert.deepEqual(await analyzeShadowDiff(root, session.shadowPath), []);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

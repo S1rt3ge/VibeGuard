@@ -44,6 +44,8 @@ test("runAgentSession dry-run previews Codex launch without writing command hist
     assert.equal(result.executable, "codex");
     assert.deepEqual(result.args, ["--ask-for-approval", "never"]);
     assert.equal(result.commandText, "codex --ask-for-approval never");
+    assert.equal(result.handoffPath, session.handoff.path);
+    assert.equal(result.handoffRelativePath, "VIBEGUARD_TASK.md");
     assert.equal(result.exitCode, null);
     assert.equal(records.length, 0);
   } finally {
@@ -65,7 +67,7 @@ test("runAgentSession launches injected Codex executable inside shadow workspace
       scriptPath,
       [
         "import { writeFileSync } from 'node:fs';",
-        "writeFileSync('agent-output.txt', process.env.VIBEGUARD_SESSION_ID);",
+        "writeFileSync('agent-output.txt', [process.env.VIBEGUARD_SESSION_ID, process.env.VIBEGUARD_HANDOFF_PATH].join('\\n'));",
       ].join("\n"),
     );
 
@@ -84,7 +86,11 @@ test("runAgentSession launches injected Codex executable inside shadow workspace
     const records = await readCommandRecords(root, "agent-run");
 
     assert.equal(result.exitCode, 0);
-    assert.equal(await readFile(path.join(session.shadowPath, "agent-output.txt"), "utf8"), "agent-run");
+    assert.equal(
+      await readFile(path.join(session.shadowPath, "agent-output.txt"), "utf8"),
+      `agent-run\n${session.handoff.path}`,
+    );
+    assert.equal(result.handoffPath, session.handoff.path);
     await assert.rejects(() => access(path.join(root, "agent-output.txt")));
     assert.equal(records.length, 1);
     assert.equal(records[0].decision, "allowed");
@@ -162,6 +168,8 @@ test("CLI run --agent codex --dry-run --json emits launch preview", async () => 
     assert.equal(payload.run.executable, "codex");
     assert.deepEqual(payload.run.args, ["--ask-for-approval", "never"]);
     assert.equal(payload.run.commandText, "codex --ask-for-approval never");
+    assert.match(payload.run.handoffPath, /VIBEGUARD_TASK\.md$/);
+    assert.equal(payload.run.handoffRelativePath, "VIBEGUARD_TASK.md");
     assert.equal(payload.run.dryRun, true);
     assert.equal(payload.run.exitCode, null);
   } finally {
