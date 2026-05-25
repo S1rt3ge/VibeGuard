@@ -15,6 +15,7 @@ import { createCapsule, saveCapsule } from "./capsule-store.js";
 import { readCheckRecords } from "./check-log.js";
 import { readCommandRecords } from "./command-log.js";
 import { appendDebtEntry, appendRollbackDebtEntry } from "./debt-ledger.js";
+import { assertCleanGitWorktree, inspectGitWorktree } from "./git-status.js";
 import { loadProjectPolicy } from "./project.js";
 import { normalizeRepoPath, reviewChanges } from "../../policy/src/index.js";
 import { scoreReview } from "../../risk-engine/src/index.js";
@@ -41,6 +42,7 @@ export async function createShadowSession({
   agent = "codex",
   model = "unknown",
   allowedGlobs = [],
+  allowDirty = false,
   now = new Date(),
 } = {}) {
   const trimmedTask = String(task ?? "").trim();
@@ -54,6 +56,9 @@ export async function createShadowSession({
   const shadowPath = path.join(stateDir, "shadows", id);
   const sessionsDir = path.join(stateDir, "sessions");
   const sessionPath = path.join(sessionsDir, `${id}.json`);
+  const git = inspectGitWorktree(root, { allowDirty });
+
+  assertCleanGitWorktree(git);
 
   await mkdir(shadowPath, { recursive: true });
   await mkdir(sessionsDir, { recursive: true });
@@ -70,6 +75,7 @@ export async function createShadowSession({
     policy: {
       allowedGlobs: [...allowedGlobs],
     },
+    git,
     snapshot: {
       excluded: [...SNAPSHOT_EXCLUDES],
       manifest,

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -65,6 +65,71 @@ test("shadow session rejects empty tasks", async () => {
   );
 });
 
+test("createShadowSession rejects dirty Git worktree by default", async () => {
+  const root = await createGitFixture("vibeguard-dirty-core-");
+
+  try {
+    await writeFile(path.join(root, "src", "app.js"), "dirty change\n");
+
+    await assert.rejects(
+      () =>
+        createShadowSession({
+          repoRoot: root,
+          task: "dirty task",
+          sessionId: "dirty-session",
+        }),
+      /Working tree has uncommitted changes/,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("createShadowSession records dirty Git baseline when explicitly allowed", async () => {
+  const root = await createGitFixture("vibeguard-dirty-allowed-");
+
+  try {
+    await writeFile(path.join(root, "src", "app.js"), "dirty change\n");
+
+    const session = await createShadowSession({
+      repoRoot: root,
+      task: "dirty allowed task",
+      sessionId: "dirty-allowed-session",
+      allowDirty: true,
+    });
+    const saved = JSON.parse(await readFile(session.sessionPath, "utf8"));
+
+    assert.equal(saved.git.available, true);
+    assert.equal(saved.git.dirty, true);
+    assert.equal(saved.git.allowDirty, true);
+    assert.deepEqual(saved.git.files, [{ path: "src/app.js", status: "M" }]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("createShadowSession ignores VibeGuard local state when checking dirty Git worktree", async () => {
+  const root = await createGitFixture("vibeguard-local-state-");
+
+  try {
+    await mkdir(path.join(root, ".vibeguard"), { recursive: true });
+    await writeFile(path.join(root, ".vibeguard", "config.json"), "{}\n");
+
+    const session = await createShadowSession({
+      repoRoot: root,
+      task: "local state only",
+      sessionId: "local-state-session",
+    });
+    const saved = JSON.parse(await readFile(session.sessionPath, "utf8"));
+
+    assert.equal(saved.git.available, true);
+    assert.equal(saved.git.dirty, false);
+    assert.deepEqual(saved.git.files, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("CLI init and task commands create project state", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "vibeguard-cli-"));
 
@@ -91,6 +156,49 @@ test("CLI init and task commands create project state", async () => {
     assert.match(task.stdout, /Open the shadow workspace in your AI coding tool/);
     assert.match(task.stdout, /vibeguard review --session/);
     assert.match(task.stdout, /vibeguard apply --safe --session/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("CLI task blocks dirty Git worktree unless explicitly allowed", async () => {
+  const root = await createGitFixture("vibeguard-dirty-cli-");
+
+  try {
+    await writeFile(path.join(root, "src", "app.js"), "dirty cli change\n");
+
+    const blocked = spawnSync(
+      process.execPath,
+      [cliPath, "task", "dirty cli task", "--root", root, "--session", "dirty-cli"],
+      { encoding: "utf8" },
+    );
+
+    assert.equal(blocked.status, 1);
+    assert.match(blocked.stderr, /Working tree has uncommitted changes/);
+    assert.doesNotMatch(blocked.stdout, /Created shadow session/);
+
+    const allowed = spawnSync(
+      process.execPath,
+      [
+        cliPath,
+        "task",
+        "dirty cli task",
+        "--root",
+        root,
+        "--session",
+        "dirty-cli-allowed",
+        "--allow-dirty",
+        "--json",
+      ],
+      { encoding: "utf8" },
+    );
+
+    assert.equal(allowed.status, 0, allowed.stderr);
+    const payload = JSON.parse(allowed.stdout);
+    assert.equal(payload.session.git.available, true);
+    assert.equal(payload.session.git.dirty, true);
+    assert.equal(payload.session.git.allowDirty, true);
+    assert.deepEqual(payload.session.git.files, [{ path: "src/app.js", status: "M" }]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -256,3 +364,21 @@ test("CLI exits with an error for unknown commands", () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Unknown command/);
 });
+
+async function createGitFixture(prefix) {
+  const root = await mkdtemp(path.join(tmpdir(), prefix));
+  await mkdir(path.join(root, "src"), { recursive: true });
+  await writeFile(path.join(root, "src", "app.js"), "clean app\n");
+  runGit(root, ["init"]);
+  runGit(root, ["config", "user.email", "vibeguard@example.test"]);
+  runGit(root, ["config", "user.name", "VibeGuard Test"]);
+  runGit(root, ["add", "."]);
+  runGit(root, ["commit", "-m", "init"]);
+  return root;
+}
+
+function runGit(cwd, args) {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  return result;
+}

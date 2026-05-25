@@ -64,6 +64,8 @@ vibeguard init
 vibeguard task "fix login redirect bug" --allow "app/**,lib/auth/**,tests/**"
 ```
 
+`task` refuses to start from a dirty Git worktree by default. Commit or stash local changes first, or use `--allow-dirty` when you intentionally want the dirty baseline recorded in the session.
+
 `init` prints the next command to run:
 
 ```text
@@ -117,6 +119,7 @@ vibeguard version
 vibeguard doctor
 vibeguard init
 vibeguard task "add billing page" --allow "app/billing/**,lib/stripe/**,tests/billing/**"
+vibeguard task "continue local WIP" --allow "src/**,tests/**" --allow-dirty
 vibeguard status --session "<session-id>"
 vibeguard review --session "<session-id>" --summary
 vibeguard review --session "<session-id>" --fail-on-risk medium

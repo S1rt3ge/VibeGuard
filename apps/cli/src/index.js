@@ -110,6 +110,7 @@ async function main(argv) {
       task,
       sessionId: options.session,
       allowedGlobs: parseMultiValueOption(options.allow),
+      allowDirty: optionFlag(options["allow-dirty"]),
     });
     if (options.json) {
       printJson(createTaskPayload(session));
@@ -720,6 +721,7 @@ function createTaskPayload(session) {
       policy: {
         allowedGlobs: session.policy?.allowedGlobs ?? [],
       },
+      git: session.git,
       snapshot: {
         excluded: session.snapshot?.excluded ?? [],
         files: Object.keys(session.snapshot?.manifest ?? {}).length,
@@ -824,7 +826,7 @@ Commands:
   vibeguard --version
   vibeguard doctor [--root <path>] [--json]
   vibeguard init [--root <path>] [--json]
-  vibeguard task "<task>" [--root <path>] [--session <id>] [--allow <csv>] [--json]
+  vibeguard task "<task>" [--root <path>] [--session <id>] [--allow <csv>] [--allow-dirty] [--json]
   vibeguard status [--session <id>] [--root <path>] [--json]
   vibeguard guard-command [--session <id>] "<command>"
   vibeguard command history --session <id> [--root <path>]
