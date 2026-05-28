@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   copyFile,
+  lstat,
   mkdir,
   readFile,
   readdir,
@@ -230,6 +231,8 @@ export async function applySafeChanges(repoRoot, sessionId, options = {}) {
     };
   }
 
+  await validateApplyFileOperations(root, shadow, filesToApply);
+
   const applyRecord = await createApplyRecord(root, result.session.id, filesToApply, {
     applyId: options.applyId,
     task: result.session.task,
@@ -249,8 +252,10 @@ export async function applySafeChanges(repoRoot, sessionId, options = {}) {
     applied.push(item.path);
   }
 
+  const approval = createSafeApplyApproval(applied, result.review);
   const capsule = createCapsule({
     task: result.session.task,
+    sessionId: result.session.id,
     agent: result.session.agent,
     model: result.session.model,
     review: result.review,
@@ -261,6 +266,9 @@ export async function applySafeChanges(repoRoot, sessionId, options = {}) {
       id: applyRecord.id,
       manifestPath: applyRecord.manifestPath,
       files: applyRecord.files.length,
+      decision: approval.decision,
+      applied: approval.applied,
+      skipped: approval.skipped,
     },
     applied,
     humanApproval: "safe_apply",
@@ -271,6 +279,7 @@ export async function applySafeChanges(repoRoot, sessionId, options = {}) {
   return {
     ...result,
     applied,
+    approval,
     applyRecord,
     capsule,
     capsulePath,
@@ -303,7 +312,14 @@ function normalizeSelectedFiles(files) {
   const seen = new Set();
 
   for (const value of values) {
-    const filePath = normalizeRepoPath(String(value ?? "").trim());
+    const rawPath = String(value ?? "").trim();
+    if (path.isAbsolute(rawPath)) {
+      throw new Error(`Selected path must be repo-relative: ${rawPath}`);
+    }
+    const filePath = normalizeRepoPath(rawPath);
+    if (filePath.split("/").includes("..")) {
+      throw new Error(`Selected path escapes workspace: ${rawPath}`);
+    }
     if (!filePath || seen.has(filePath)) {
       continue;
     }
@@ -316,6 +332,50 @@ function normalizeSelectedFiles(files) {
   }
 
   return normalized;
+}
+
+async function validateApplyFileOperations(root, shadow, filesToApply) {
+  for (const item of filesToApply) {
+    const rootTarget = resolveInside(root, item.path);
+    const shadowSource = resolveInside(shadow, item.path);
+
+    if (item.status !== "deleted") {
+      await assertRegularFile(shadowSource, `Cannot apply non-file shadow source: ${item.path}`);
+      await assertMissingOrRegularFile(rootTarget, `Cannot apply over non-file path: ${item.path}`);
+    }
+  }
+}
+
+async function assertRegularFile(filePath, message) {
+  const info = await lstat(filePath);
+  if (!info.isFile()) {
+    throw new Error(message);
+  }
+}
+
+async function assertMissingOrRegularFile(filePath, message) {
+  try {
+    const info = await lstat(filePath);
+    if (!info.isFile()) {
+      throw new Error(message);
+    }
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+}
+
+function createSafeApplyApproval(applied, review) {
+  return {
+    decision: "safe_apply",
+    applied: [...applied],
+    skipped: {
+      blocked: review.blocked.map((item) => item.path),
+      approvalRequired: review.approvalRequired.map((item) => item.path),
+    },
+  };
 }
 
 export async function rollbackAppliedChanges(repoRoot, sessionId, options = {}) {

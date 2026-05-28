@@ -3,6 +3,7 @@ import path from "node:path";
 
 export function createCapsule({
   task,
+  sessionId = null,
   agent = "codex",
   model = "unknown",
   review,
@@ -31,6 +32,7 @@ export function createCapsule({
     schemaVersion: "0.1",
     id,
     task: trimmedTask,
+    sessionId,
     agent,
     model,
     filesChanged: [

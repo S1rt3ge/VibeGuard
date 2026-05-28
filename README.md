@@ -112,6 +112,7 @@ vibeguard apply --safe --session 2026-05-19-fix-login-redirect-bug
 ```
 
 `review --summary` adds an intent-based explanation: task intent, expected changes, suspicious changes, risk reasons, and next steps.
+`apply --safe` finalizes the approval boundary: it reports the safe-applied files, skipped blocked/approval-required files, apply manifest id, and saved capsule path.
 
 Apply only selected safe files:
 

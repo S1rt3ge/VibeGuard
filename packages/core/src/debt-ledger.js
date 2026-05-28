@@ -59,7 +59,7 @@ export async function appendDebtEntry(repoRoot, capsule, options = {}) {
     eventType: "capsule",
     capsuleId: capsule.id,
     task: capsule.task,
-    sessionId: null,
+    sessionId: capsule.sessionId ?? null,
     applyId: capsule.apply?.id ?? null,
     createdAt: (options.now ?? new Date()).toISOString(),
     metrics: summarizeCapsuleDebt(capsule),

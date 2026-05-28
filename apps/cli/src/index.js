@@ -53,6 +53,7 @@ import {
   formatCheckRun,
   formatCiValidation,
   formatCiAnnotations,
+  formatApplyResult,
   formatCapsuleList,
   formatCapsuleShow,
   formatContextSummary,
@@ -399,24 +400,8 @@ async function main(argv) {
     });
     if (options.json) {
       printJson(createApplyPayload(result));
-    } else if (result.dryRun) {
-      console.log("Dry run: no files applied.");
-      console.log("Would apply:");
-      for (const filePath of result.wouldApply) {
-        console.log(`  ${filePath}`);
-      }
-      if (result.wouldApply.length === 0) {
-        console.log("  (none)");
-      }
-      console.log("Skipped:");
-      console.log(`  Blocked: ${result.review.blocked.length}`);
-      console.log(`  Approval required: ${result.review.approvalRequired.length}`);
     } else {
-      console.log(`Applied: ${result.applied.length}`);
-      console.log(`Skipped blocked: ${result.review.blocked.length}`);
-      console.log(`Skipped approval required: ${result.review.approvalRequired.length}`);
-      console.log(`Apply id: ${result.applyRecord.id}`);
-      console.log(`Capsule: ${result.capsulePath}`);
+      console.log(formatApplyResult(result));
     }
     return 0;
   }
@@ -876,10 +861,19 @@ function createApplyPayload(result) {
       blocked: result.review.blocked.length,
       approvalRequired: result.review.approvalRequired.length,
     },
+    approval: result.approval,
     apply: {
       id: result.applyRecord.id,
       manifestPath: result.applyRecord.manifestPath,
       files: result.applyRecord.files.length,
+      decision: result.approval.decision,
+      applied: result.approval.applied,
+      skipped: result.approval.skipped,
+    },
+    capsule: {
+      id: result.capsule.id,
+      humanApproval: result.capsule.humanApproval,
+      applyDecision: result.capsule.apply?.decision ?? null,
     },
     capsulePath: result.capsulePath,
     debtEntry: result.debtEntry,

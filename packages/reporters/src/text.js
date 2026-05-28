@@ -81,6 +81,37 @@ export function formatReviewDecisionSummary(summary) {
   return lines.join("\n");
 }
 
+export function formatApplyResult(result) {
+  if (result.dryRun) {
+    const lines = [
+      "Dry run: no files applied.",
+      "Would apply:",
+    ];
+    for (const filePath of result.wouldApply) {
+      lines.push(`  ${filePath}`);
+    }
+    if (result.wouldApply.length === 0) {
+      lines.push("  (none)");
+    }
+    lines.push("Skipped:");
+    lines.push(`  Blocked: ${result.review.blocked.length}`);
+    lines.push(`  Approval required: ${result.review.approvalRequired.length}`);
+    return lines.join("\n");
+  }
+
+  return [
+    "VibeGuard Apply",
+    `Session: ${result.session.id}`,
+    `Decision: ${result.approval.decision}`,
+    `Applied: ${result.applied.length}`,
+    "Skipped:",
+    `  Blocked: ${result.review.blocked.length}`,
+    `  Approval required: ${result.review.approvalRequired.length}`,
+    `Apply id: ${result.applyRecord.id}`,
+    `Capsule: ${result.capsulePath}`,
+  ].join("\n");
+}
+
 function reviewDecision(counts) {
   if (counts.blocked > 0) {
     return "blocked";

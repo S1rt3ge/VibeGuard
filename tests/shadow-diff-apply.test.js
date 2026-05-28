@@ -358,8 +358,10 @@ test("CLI reviews and safely applies an edited shadow session", async () => {
       { encoding: "utf8" },
     );
     assert.equal(apply.status, 0, apply.stderr);
+    assert.match(apply.stdout, /VibeGuard Apply/);
+    assert.match(apply.stdout, /Decision: safe_apply/);
     assert.match(apply.stdout, /Applied: 1/);
-    assert.match(apply.stdout, /Skipped blocked: 1/);
+    assert.match(apply.stdout, /Blocked: 1/);
     assert.equal(await readText(path.join(root, "src", "app.js")), "cli safe change\n");
     assert.equal(await readText(path.join(root, ".env.local")), "TOKEN=root\n");
   } finally {
