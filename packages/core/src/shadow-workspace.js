@@ -28,7 +28,8 @@ import {
   writeTaskHandoff,
 } from "./handoff.js";
 import { loadProjectPolicy } from "./project.js";
-import { normalizeRepoPath, reviewChanges } from "../../policy/src/index.js";
+import { ensureSigningKey, signArtifact, verifyArtifact } from "./signing.js";
+import { matchesAny, normalizeRepoPath, reviewChanges } from "../../policy/src/index.js";
 import { scoreReview } from "../../risk-engine/src/index.js";
 
 const SNAPSHOT_EXCLUDES = [
@@ -44,6 +45,10 @@ const SNAPSHOT_EXCLUDES = [
   ".nyc_output/**",
   ".env*",
   "**/.env*",
+  "**/*secret*",
+  "**/*token*",
+  "**/*.pem",
+  "**/id_rsa*",
 ];
 
 const DIFF_EXCLUDES = [
@@ -113,10 +118,12 @@ export async function createShadowSession({
   };
 
   await writeTaskHandoff(session);
-  await writeFile(sessionPath, `${JSON.stringify(session, null, 2)}\n`, "utf8");
+  await ensureSigningKey(root);
+  const signedSession = await signArtifact(root, session);
+  await writeFile(sessionPath, `${JSON.stringify(signedSession, null, 2)}\n`, "utf8");
 
   return {
-    ...session,
+    ...signedSession,
     sessionPath,
   };
 }
@@ -398,8 +405,17 @@ export async function loadSession(repoRoot, sessionId) {
     throw new Error("Session is required");
   }
 
-  const sessionPath = path.join(path.resolve(repoRoot), ".vibeguard", "sessions", `${id}.json`);
+  const root = path.resolve(repoRoot);
+  const sessionPath = path.join(root, ".vibeguard", "sessions", `${id}.json`);
   const session = JSON.parse(await readFile(sessionPath, "utf8"));
+
+  const verification = await verifyArtifact(root, session);
+  if (verification.status === "invalid") {
+    throw new Error(
+      `Session integrity check failed for ${id}: signature mismatch (possible tampering). Refusing to review/apply.`,
+    );
+  }
+
   return {
     ...session,
     sessionPath,
@@ -526,7 +542,7 @@ function resolveInside(root, relativePath) {
 }
 
 function isSnapshotExcluded(relativePath) {
-  return SNAPSHOT_EXCLUDES.some((glob) => matchesSnapshotGlob(relativePath, glob));
+  return matchesAny(relativePath, SNAPSHOT_EXCLUDES);
 }
 
 async function createSessionContext({ repoRoot, task, includeGlobs, now }) {
@@ -541,26 +557,7 @@ async function createSessionContext({ repoRoot, task, includeGlobs, now }) {
 }
 
 function isDiffExcluded(relativePath) {
-  return DIFF_EXCLUDES.some((glob) => matchesSnapshotGlob(relativePath, glob));
-}
-
-function matchesSnapshotGlob(relativePath, glob) {
-  const normalized = toRepoPath(relativePath);
-  if (glob.endsWith("/**")) {
-    const base = glob.slice(0, -3);
-    return normalized === base || normalized.startsWith(`${base}/`);
-  }
-  if (glob.startsWith("**/")) {
-    const suffix = glob.slice(3).replace("*", "");
-    if (glob.endsWith("*")) {
-      return normalized.split("/").some((part) => part.startsWith(suffix));
-    }
-    return normalized.endsWith(suffix);
-  }
-  if (glob.endsWith("*")) {
-    return normalized.startsWith(glob.slice(0, -1));
-  }
-  return normalized === glob;
+  return matchesAny(relativePath, DIFF_EXCLUDES);
 }
 
 function toRepoPath(value) {

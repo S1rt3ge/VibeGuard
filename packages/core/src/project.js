@@ -2,11 +2,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { createDefaultPolicy } from "../../policy/src/index.js";
+import { ensureSigningKey } from "./signing.js";
 
 export async function initializeProject(repoRoot = process.cwd()) {
   const root = path.resolve(repoRoot);
   const stateDir = path.join(root, ".vibeguard");
   await mkdir(stateDir, { recursive: true });
+  await ensureSigningKey(root);
 
   const configPath = path.join(stateDir, "config.json");
   const config = {

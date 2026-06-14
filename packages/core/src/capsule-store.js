@@ -1,6 +1,8 @@
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { signArtifact } from "./signing.js";
+
 export function createCapsule({
   task,
   sessionId = null,
@@ -60,7 +62,8 @@ export async function saveCapsule(repoRoot, capsule) {
   await mkdir(capsulesDir, { recursive: true });
 
   const filePath = path.join(capsulesDir, `${capsule.id}.json`);
-  await writeFile(filePath, `${JSON.stringify(capsule, null, 2)}\n`, "utf8");
+  const signed = await signArtifact(root, capsule);
+  await writeFile(filePath, `${JSON.stringify(signed, null, 2)}\n`, "utf8");
   return filePath;
 }
 

@@ -1,6 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { signArtifact } from "./signing.js";
+
 export function createReviewPayload(result) {
   return {
     schemaVersion: "0.1",
@@ -23,6 +25,7 @@ export async function saveReviewArtifact(repoRoot, payload) {
   await mkdir(reviewsDir, { recursive: true });
 
   const reviewPath = path.join(reviewsDir, `${sessionId}.json`);
-  await writeFile(reviewPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  const signed = await signArtifact(root, payload);
+  await writeFile(reviewPath, `${JSON.stringify(signed, null, 2)}\n`, "utf8");
   return reviewPath;
 }
