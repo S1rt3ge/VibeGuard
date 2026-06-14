@@ -10,7 +10,10 @@ import {
   readCapsuleArtifact,
   saveCapsule,
 } from "../../../packages/core/src/capsule-store.js";
-import { runAgentSession } from "../../../packages/core/src/agent-runner.js";
+import {
+  DEFAULT_AGENT_REGISTRY,
+  runAgentSession,
+} from "../../../packages/core/src/agent-runner.js";
 import { expandSandboxProfile } from "../../../packages/core/src/sandbox-profiles.js";
 import {
   initializeProject,
@@ -120,6 +123,7 @@ async function main(argv) {
       repoRoot: options.root ?? process.cwd(),
       task,
       sessionId: options.session,
+      agent: optionString(options.agent) || undefined,
       allowedGlobs: parseMultiValueOption(options.allow),
       allowDirty: optionFlag(options["allow-dirty"]),
       buildContext: optionFlag(options.context),
@@ -133,9 +137,9 @@ async function main(argv) {
       console.log(`Task handoff: ${session.handoff.path}`);
       console.log("");
       console.log("Next:");
-      console.log("  1. Run Codex in the shadow workspace:");
-      console.log(`     vibeguard run --agent codex --session ${session.id}`);
-      console.log("  2. Open the shadow workspace in your AI coding tool if you use another agent.");
+      console.log(`  1. Run ${session.agent} in the shadow workspace:`);
+      console.log(`     vibeguard run --agent ${session.agent} --session ${session.id}`);
+      console.log("  2. Or open the shadow workspace in your AI coding tool (e.g. Cursor) and drive the agent there.");
       console.log("  3. Let the agent edit files there, not in your real repo.");
       console.log(`  4. Run: vibeguard check run --session ${session.id} --name unit --command "npm test"`);
       console.log(`  5. Run: vibeguard review --session ${session.id}`);
@@ -164,6 +168,7 @@ async function main(argv) {
       args: passthroughArgs,
       dryRun,
       sandbox,
+      agentRegistry: await resolveAgentRegistry(options.root ?? process.cwd()),
     });
 
     if (options.json) {
@@ -605,6 +610,28 @@ function parseOptionalNonNegativeNumberOption(value, name) {
     throw new Error(`--${name} must be a non-negative number`);
   }
   return number;
+}
+
+async function resolveAgentRegistry(repoRoot) {
+  const config = await loadProjectConfig(repoRoot);
+  const configured = config?.agents;
+  if (!configured || typeof configured !== "object" || Array.isArray(configured)) {
+    return { ...DEFAULT_AGENT_REGISTRY };
+  }
+
+  const registry = { ...DEFAULT_AGENT_REGISTRY };
+  for (const [name, entry] of Object.entries(configured)) {
+    const command = String(entry?.command ?? "").trim();
+    if (!command) {
+      throw new Error(`agents.${name}.command is required`);
+    }
+    const defaultArgs = entry?.defaultArgs ?? [];
+    if (!Array.isArray(defaultArgs)) {
+      throw new Error(`agents.${name}.defaultArgs must be an array`);
+    }
+    registry[name] = { command, defaultArgs: defaultArgs.map((item) => String(item)) };
+  }
+  return registry;
 }
 
 async function resolveRunSandbox(options) {

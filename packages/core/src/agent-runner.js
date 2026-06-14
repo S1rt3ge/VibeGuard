@@ -4,10 +4,28 @@ import path from "node:path";
 import { appendCommandRecord } from "./command-log.js";
 import { loadSession } from "./shadow-workspace.js";
 
-const DEFAULT_AGENT_REGISTRY = {
+// Thin, data-driven adapters: each agent is just a command + default args run
+// inside the shadow workspace. CLI agents (codex, claude, cursor-agent) edit the
+// shadow in place; Cursor is a GUI IDE, so its adapter opens the shadow folder
+// ("cursor .") and the user drives the agent there. Extend or override via the
+// "agents" map in .vibeguard/config.json. Agents VibeGuard never launches are
+// still covered after the fact by `vibeguard capsule from`.
+export const DEFAULT_AGENT_REGISTRY = {
   codex: {
     command: "codex",
     defaultArgs: [],
+  },
+  claude: {
+    command: "claude",
+    defaultArgs: [],
+  },
+  "cursor-agent": {
+    command: "cursor-agent",
+    defaultArgs: [],
+  },
+  cursor: {
+    command: "cursor",
+    defaultArgs: ["."],
   },
 };
 

@@ -211,6 +211,40 @@ vibeguard debt report --days 30 --json
 
 `context build --json` prints a summary and the saved bundle path, but it does not print file contents to stdout.
 
+## Works With Any Agent
+
+VibeGuard is agent-neutral. Built-in launch adapters: `codex`, `claude`, and
+`cursor-agent` run inside the shadow workspace; `cursor` opens the shadow folder
+in the IDE so you can drive Cursor's agent there.
+
+```bash
+vibeguard task "fix login bug" --allow "app/**,tests/**" --agent claude
+vibeguard run --agent claude --session "<session-id>"
+# Cursor (GUI): open the shadow workspace, then review/apply as usual
+vibeguard run --agent cursor --session "<session-id>"
+```
+
+Add or override agents in `.vibeguard/config.json` without code changes:
+
+```json
+{
+  "agents": {
+    "aider": { "command": "aider", "defaultArgs": ["--yes"] }
+  }
+}
+```
+
+For an agent VibeGuard never launched (e.g. you used Cursor's GUI agent directly,
+or an agent on a CI branch), attest the result after the fact — the capsule is
+tagged with whatever agent you name:
+
+```bash
+vibeguard capsule from --base origin/main --head HEAD --agent cursor
+```
+
+The agent you pick on `task`/`run`/`capsule from` is recorded in the session and
+the capsule, so provenance is correct across Codex, Claude Code, and Cursor.
+
 ## Default Protections
 
 VibeGuard blocks or approval-gates common high-risk changes:

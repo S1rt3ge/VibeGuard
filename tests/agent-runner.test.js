@@ -135,6 +135,36 @@ test("runAgentSession wraps the launch in a configured sandbox", async () => {
   }
 });
 
+test("runAgentSession supports codex, claude, and cursor adapters", async () => {
+  const root = await createFixture("vibeguard-agent-multi-");
+
+  try {
+    await createShadowSession({ repoRoot: root, task: "multi agent", sessionId: "multi" });
+
+    const claude = await runAgentSession({
+      repoRoot: root,
+      sessionId: "multi",
+      agent: "claude",
+      dryRun: true,
+    });
+    assert.equal(claude.executable, "claude");
+    assert.equal(claude.commandText, "claude");
+
+    // Cursor is a GUI: its adapter opens the shadow folder.
+    const cursor = await runAgentSession({
+      repoRoot: root,
+      sessionId: "multi",
+      agent: "cursor",
+      dryRun: true,
+    });
+    assert.equal(cursor.executable, "cursor");
+    assert.deepEqual(cursor.args, ["."]);
+    assert.equal(cursor.commandText, "cursor .");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("runAgentSession rejects unsupported agents", async () => {
   const root = await createFixture("vibeguard-agent-unsupported-");
 
@@ -150,10 +180,10 @@ test("runAgentSession rejects unsupported agents", async () => {
         runAgentSession({
           repoRoot: root,
           sessionId: "unsupported-agent",
-          agent: "cursor",
+          agent: "no-such-agent",
           dryRun: true,
         }),
-      /Unsupported agent: cursor/,
+      /Unsupported agent: no-such-agent/,
     );
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -206,6 +236,55 @@ test("CLI run --agent codex --dry-run --json emits launch preview", async () => 
     assert.equal(payload.run.handoffRelativePath, "VIBEGUARD_TASK.md");
     assert.equal(payload.run.dryRun, true);
     assert.equal(payload.run.exitCode, null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("CLI run resolves a config-defined agent", async () => {
+  const root = await createFixture("vibeguard-agent-config-");
+
+  try {
+    const task = spawnSync(
+      process.execPath,
+      [cliPath, "task", "config agent", "--root", root, "--session", "config-agent"],
+      { encoding: "utf8" },
+    );
+    assert.equal(task.status, 0, task.stderr);
+    await writeFile(
+      path.join(root, ".vibeguard", "config.json"),
+      `${JSON.stringify({ agents: { robo: { command: "robo", defaultArgs: ["--go"] } } }, null, 2)}\n`,
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [cliPath, "run", "--agent", "robo", "--root", root, "--session", "config-agent", "--dry-run", "--json"],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.run.executable, "robo");
+    assert.equal(payload.run.commandText, "robo --go");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("CLI task --agent tags the session with the agent", async () => {
+  const root = await createFixture("vibeguard-agent-tag-");
+
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [cliPath, "task", "tagged work", "--root", root, "--session", "tagged", "--agent", "claude"],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+
+    const session = JSON.parse(
+      await readFile(path.join(root, ".vibeguard", "sessions", "tagged.json"), "utf8"),
+    );
+    assert.equal(session.agent, "claude");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
