@@ -1,0 +1,47 @@
+# VibeGuard AI Change Gate — drop this into .github/workflows/ in your repo.
+#
+# On every pull request it derives a signed "capsule" (a provenance record of the
+# change) directly from the PR diff — no shadow workflow, no setup, works no
+# matter which agent wrote the code — and fails the check if:
+#   - a secret / protected / out-of-scope file landed in the PR,
+#   - a high-risk change has no saved review,
+#   - a changed file is not described by the capsule.
+#
+# Customize policy with a .vibeguard/config.json in your repo (allowedGlobs,
+# blockedGlobs, approvalGlobs, riskZones). See the VibeGuard README.
+name: AI Change Gate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ai-change-gate:
+    name: Validate AI change
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so we can compute the PR merge-base
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Compute PR base
+        id: base
+        run: echo "sha=$(git merge-base origin/${{ github.base_ref }} HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Derive capsule from the PR diff
+        run: >-
+          npx --yes --package github:S1rt3ge/VibeGuard --
+          vibeguard capsule from --base "${{ steps.base.outputs.sha }}" --head HEAD --agent ci
+
+      - name: Validate the AI change (fails the PR on a violation)
+        run: >-
+          npx --yes --package github:S1rt3ge/VibeGuard --
+          vibeguard ci validate --latest --git-base "${{ steps.base.outputs.sha }}"

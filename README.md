@@ -245,6 +245,27 @@ vibeguard capsule from --base origin/main --head HEAD --agent cursor
 The agent you pick on `task`/`run`/`capsule from` is recorded in the session and
 the capsule, so provenance is correct across Codex, Claude Code, and Cursor.
 
+## Gate AI PRs in Your Repo (one file)
+
+Copy [`examples/github-actions/ai-change-gate.yml`](examples/github-actions/ai-change-gate.yml)
+into your `.github/workflows/`. On every pull request it derives a signed capsule
+from the PR diff and **fails the check** if a secret/protected/out-of-scope file
+landed, a high-risk change has no review, or a changed file isn't described by
+the capsule. No setup, no shadow workflow, works with any agent:
+
+```yaml
+- run: npx --yes --package github:S1rt3ge/VibeGuard --
+    vibeguard capsule from --base "$BASE" --head HEAD --agent ci
+- run: npx --yes --package github:S1rt3ge/VibeGuard --
+    vibeguard ci validate --latest --git-base "$BASE"
+```
+
+See it block a secret-leaking PR and pass a clean one, locally, in 30 seconds:
+
+```bash
+node examples/demo/demo.mjs
+```
+
 ## Default Protections
 
 VibeGuard blocks or approval-gates common high-risk changes:
