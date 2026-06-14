@@ -95,6 +95,48 @@ test("validateCiArtifacts binds the capsule to the actual PR changed files", asy
   }
 });
 
+test("validateCiArtifacts enforces a required provenance level", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "vibeguard-ci-provenance-"));
+
+  try {
+    const enforcedPath = await writeJson(root, "enforced.json", makeCapsule());
+    const attestedPath = await writeJson(root, "attested.json", createCapsule({
+      task: "attested change",
+      review: {
+        blocked: [],
+        approvalRequired: [],
+        reviewable: [{ path: "src/app.js", reasons: [], riskZones: [] }],
+      },
+      score: { risk: { level: "low", reasons: [] }, slop: { score: 0, problems: [] } },
+      applied: ["src/app.js"],
+      humanApproval: "attested",
+      provenance: "git_range",
+      now: new Date("2026-05-17T12:00:00.000Z"),
+    }));
+
+    // enforced requirement: vibeguard_apply passes, git_range fails.
+    assert.equal(
+      (await validateCiArtifacts({ repoRoot: root, capsulePath: enforcedPath, requireProvenance: "enforced" })).valid,
+      true,
+    );
+    const attestedUnderEnforced = await validateCiArtifacts({
+      repoRoot: root,
+      capsulePath: attestedPath,
+      requireProvenance: "enforced",
+    });
+    assert.equal(attestedUnderEnforced.valid, false);
+    assert.ok(attestedUnderEnforced.findings.some((finding) => finding.code === "provenance_requirement_unmet"));
+
+    // attested requirement: git_range passes (it is at least attested).
+    assert.equal(
+      (await validateCiArtifacts({ repoRoot: root, capsulePath: attestedPath, requireProvenance: "attested" })).valid,
+      true,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("validateCiArtifacts fails high-risk auto-applied capsules with no review", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "vibeguard-ci-highrisk-apply-"));
 
@@ -347,6 +389,40 @@ test("CLI ci validate supports --latest with --review-latest", async () => {
 
     assert.equal(ambiguous.status, 1);
     assert.match(ambiguous.stderr, /--review and --review-latest cannot be combined/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("CLI ci validate honors --require-provenance", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "vibeguard-ci-cli-provenance-"));
+
+  try {
+    await writeJson(root, ".vibeguard/capsules/current.json", createCapsule({
+      task: "attested",
+      review: { blocked: [], approvalRequired: [], reviewable: [{ path: "src/app.js", reasons: [], riskZones: [] }] },
+      score: { risk: { level: "low", reasons: [] }, slop: { score: 0, problems: [] } },
+      applied: ["src/app.js"],
+      humanApproval: "attested",
+      provenance: "git_range",
+      now: new Date("2026-05-17T12:00:00.000Z"),
+    }));
+
+    const fail = spawnSync(
+      process.execPath,
+      [cliPath, "ci", "validate", "--root", root, "--latest", "--require-provenance", "enforced", "--json"],
+      { encoding: "utf8" },
+    );
+    assert.equal(fail.status, 2, fail.stderr);
+    assert.ok(JSON.parse(fail.stdout).validation.findings.some((f) => f.code === "provenance_requirement_unmet"));
+
+    const bad = spawnSync(
+      process.execPath,
+      [cliPath, "ci", "validate", "--root", root, "--latest", "--require-provenance", "nope"],
+      { encoding: "utf8" },
+    );
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /must be one of: enforced, attested/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

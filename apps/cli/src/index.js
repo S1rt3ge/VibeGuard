@@ -711,7 +711,19 @@ async function validateCiOptions(options) {
     latest,
     reviewLatest,
     changedFiles: resolveCiChangedFiles(options),
+    requireProvenance: resolveRequiredProvenance(options),
   });
+}
+
+function resolveRequiredProvenance(options) {
+  const value = optionString(options["require-provenance"]);
+  if (!value) {
+    return null;
+  }
+  if (value !== "enforced" && value !== "attested") {
+    throw new Error("--require-provenance must be one of: enforced, attested");
+  }
+  return value;
 }
 
 function resolveCiChangedFiles(options) {

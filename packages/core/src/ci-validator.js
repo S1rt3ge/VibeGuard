@@ -23,6 +23,7 @@ export async function validateCiArtifacts({
   latest = false,
   reviewLatest = false,
   changedFiles = [],
+  requireProvenance = null,
 } = {}) {
   const root = path.resolve(repoRoot);
   const findings = [];
@@ -59,6 +60,7 @@ export async function validateCiArtifacts({
   validateCapsuleShape(capsule, findings);
   validateCapsuleBoundaries(capsule, findings);
   validateCapsuleAgainstChangedFiles(capsule, changedFiles, findings);
+  validateCapsuleProvenance(capsule, requireProvenance, findings);
 
   if ((await verifyArtifact(root, capsule)).status === "invalid") {
     findings.push(errorFinding(
@@ -192,6 +194,27 @@ function validateCapsuleBoundaries(capsule, findings) {
         { path: filePath },
       ));
     }
+  }
+}
+
+// Provenance precedence: enforced (vibeguard_apply) satisfies any requirement;
+// attested (git_range) satisfies only an "attested" requirement.
+const PROVENANCE_RANK = { git_range: 1, vibeguard_apply: 2 };
+const REQUIRED_PROVENANCE_RANK = { attested: 1, enforced: 2 };
+
+function validateCapsuleProvenance(capsule, requireProvenance, findings) {
+  if (!requireProvenance) {
+    return;
+  }
+
+  const needed = REQUIRED_PROVENANCE_RANK[requireProvenance];
+  const actual = PROVENANCE_RANK[capsule.provenance];
+  if (!actual || actual < needed) {
+    findings.push(errorFinding(
+      "provenance_requirement_unmet",
+      `Capsule provenance "${capsule.provenance ?? "none"}" does not meet the required level: ${requireProvenance}.`,
+      { required: requireProvenance, actual: capsule.provenance ?? null },
+    ));
   }
 }
 

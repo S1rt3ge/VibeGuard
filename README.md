@@ -316,6 +316,19 @@ vibeguard ci validate --latest --changed-files "src/app.js,src/login.tsx"
 Any changed file the capsule does not describe fails the gate, and a high-risk
 applied capsule with no saved review is rejected.
 
+A capsule can also be derived from any commit range — even from an agent that
+never used VibeGuard's shadow flow — and still feed the gate:
+
+```bash
+vibeguard capsule from --base origin/main --head HEAD --agent codex
+vibeguard ci validate --latest --require-provenance attested
+```
+
+Such a capsule is marked `provenance: git_range` (attested), versus
+`vibeguard_apply` (enforced) for changes VibeGuard applied itself.
+`--require-provenance enforced|attested` lets a gate demand a minimum level. See
+`docs/specs/capsule-format.md`.
+
 ## Project Policy
 
 Create `.vibeguard/config.json` in your repo to customize policy and checks:
