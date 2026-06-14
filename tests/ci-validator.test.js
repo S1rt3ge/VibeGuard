@@ -69,6 +69,49 @@ test("validateCiArtifacts fails high-risk pending capsules", async () => {
   }
 });
 
+test("validateCiArtifacts binds the capsule to the actual PR changed files", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "vibeguard-ci-bind-"));
+
+  try {
+    const capsulePath = await writeJson(root, "capsule.json", makeCapsule());
+
+    const covered = await validateCiArtifacts({
+      repoRoot: root,
+      capsulePath,
+      changedFiles: ["src/app.js"],
+    });
+    assert.equal(covered.valid, true);
+
+    const uncovered = await validateCiArtifacts({
+      repoRoot: root,
+      capsulePath,
+      changedFiles: ["src/app.js", "src/sneaky.js"],
+    });
+    assert.equal(uncovered.valid, false);
+    assert.ok(uncovered.findings.some((finding) =>
+      finding.code === "capsule_missing_changed_file" && finding.path === "src/sneaky.js"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("validateCiArtifacts fails high-risk auto-applied capsules with no review", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "vibeguard-ci-highrisk-apply-"));
+
+  try {
+    const capsulePath = await writeJson(root, "capsule.json", makeCapsule({
+      risk: { level: "high", reasons: ["high_risk_zones_touched"] },
+      humanApproval: "safe_apply",
+    }));
+    const result = await validateCiArtifacts({ repoRoot: root, capsulePath });
+
+    assert.equal(result.valid, false);
+    assert.ok(result.findings.some((finding) => finding.code === "high_risk_without_review"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("validateCiArtifacts fails when blocked or approval-required files were applied", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "vibeguard-ci-applied-"));
 

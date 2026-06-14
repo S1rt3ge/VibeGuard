@@ -2,6 +2,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { normalizeRepoPath } from "../../policy/src/index.js";
+import { verifyArtifact } from "./signing.js";
 
 const CAPSULE_REQUIRED_FIELDS = [
   "task",
@@ -21,6 +22,7 @@ export async function validateCiArtifacts({
   reviewPath,
   latest = false,
   reviewLatest = false,
+  changedFiles = [],
 } = {}) {
   const root = path.resolve(repoRoot);
   const findings = [];
@@ -56,6 +58,14 @@ export async function validateCiArtifacts({
   const capsule = capsuleResult.value;
   validateCapsuleShape(capsule, findings);
   validateCapsuleBoundaries(capsule, findings);
+  validateCapsuleAgainstChangedFiles(capsule, changedFiles, findings);
+
+  if ((await verifyArtifact(root, capsule)).status === "invalid") {
+    findings.push(errorFinding(
+      "capsule_signature_invalid",
+      "Capsule signature does not match its contents (possible tampering).",
+    ));
+  }
 
   let review = null;
   let resolvedReviewPath = "";
@@ -74,7 +84,23 @@ export async function validateCiArtifacts({
     if (review) {
       validateReviewPayload(review, findings);
       validateReviewConsistency(review, capsule, findings);
+      if ((await verifyArtifact(root, review)).status === "invalid") {
+        findings.push(errorFinding(
+          "review_signature_invalid",
+          "Review artifact signature does not match its contents (possible tampering).",
+        ));
+      }
     }
+  }
+
+  // A high-risk change that was applied (any non-pending approval, including
+  // safe_apply) must be backed by a saved, consistent review artifact. Without
+  // one, the gate previously let high-risk auto-applied capsules through.
+  if (capsule.risk?.level === "high" && capsule.humanApproval !== "pending" && !review) {
+    findings.push(errorFinding(
+      "high_risk_without_review",
+      "High-risk applied capsule requires a saved review artifact (pass --review or --review-latest).",
+    ));
   }
 
   return buildValidation({
@@ -163,6 +189,27 @@ function validateCapsuleBoundaries(capsule, findings) {
       findings.push(errorFinding(
         "approval_required_file_applied",
         `Approval-required file was applied: ${filePath}.`,
+        { path: filePath },
+      ));
+    }
+  }
+}
+
+function validateCapsuleAgainstChangedFiles(capsule, changedFiles, findings) {
+  if (!Array.isArray(changedFiles) || changedFiles.length === 0) {
+    return;
+  }
+
+  const described = new Set([
+    ...pathsFromStrings(capsule.filesChanged),
+    ...pathsFromStrings(capsule.applied),
+  ]);
+
+  for (const filePath of changedFiles.map((item) => normalizeRepoPath(item)).filter(Boolean)) {
+    if (!described.has(filePath)) {
+      findings.push(errorFinding(
+        "capsule_missing_changed_file",
+        `PR changed a file the capsule does not describe: ${filePath}.`,
         { path: filePath },
       ));
     }
