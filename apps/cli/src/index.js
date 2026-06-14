@@ -11,7 +11,11 @@ import {
   saveCapsule,
 } from "../../../packages/core/src/capsule-store.js";
 import { runAgentSession } from "../../../packages/core/src/agent-runner.js";
-import { initializeProject, loadProjectPolicy } from "../../../packages/core/src/project.js";
+import {
+  initializeProject,
+  loadProjectConfig,
+  loadProjectPolicy,
+} from "../../../packages/core/src/project.js";
 import {
   buildContextBundle,
   saveContextBundle,
@@ -149,6 +153,7 @@ async function main(argv) {
       agent: requireOption(options.agent, "agent"),
       args: passthroughArgs,
       dryRun: optionFlag(options["dry-run"]),
+      sandbox: await resolveRunSandbox(options),
     });
 
     if (options.json) {
@@ -225,6 +230,7 @@ async function main(argv) {
       const result = await runSessionChecks({
         repoRoot: options.root ?? process.cwd(),
         sessionId: options.session,
+        allowUntrustedChecks: optionFlag(options["allow-untrusted-checks"]),
         checks: options.command
           ? [{
               name: requireOption(options.name, "name"),
@@ -549,6 +555,22 @@ function parseOptionalNonNegativeNumberOption(value, name) {
   return number;
 }
 
+async function resolveRunSandbox(options) {
+  const flag = optionString(options.sandbox);
+  if (flag) {
+    return flag.trim().split(/\s+/).filter(Boolean);
+  }
+  const config = await loadProjectConfig(options.root ?? process.cwd());
+  const configured = config?.run?.sandbox;
+  if (Array.isArray(configured)) {
+    return configured.map((item) => String(item));
+  }
+  if (typeof configured === "string" && configured.trim()) {
+    return configured.trim().split(/\s+/).filter(Boolean);
+  }
+  return [];
+}
+
 function splitPassthroughArgs(args) {
   const separatorIndex = args.indexOf("--");
   if (separatorIndex === -1) {
@@ -621,7 +643,33 @@ async function validateCiOptions(options) {
     reviewPath: reviewPath || undefined,
     latest,
     reviewLatest,
+    changedFiles: resolveCiChangedFiles(options),
   });
+}
+
+function resolveCiChangedFiles(options) {
+  const explicit = parseMultiValueOption(options["changed-files"]);
+  if (explicit.length > 0) {
+    return explicit;
+  }
+
+  const base = optionString(options["git-base"]);
+  if (!base) {
+    return [];
+  }
+
+  const root = options.root ?? process.cwd();
+  const result = spawnSync("git", ["-C", root, "diff", "--name-only", `${base}...HEAD`], {
+    encoding: "utf8",
+  });
+  if (result.error || result.status !== 0) {
+    const detail = result.error ? result.error.message : (result.stderr ?? "").trim();
+    throw new Error(`Failed to list changed files from git base "${base}": ${detail || "git error"}`);
+  }
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 function optionFlag(value) {

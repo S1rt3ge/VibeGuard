@@ -10,6 +10,22 @@ VibeGuard is a Git safety layer for AI-generated code. It keeps agent edits in a
 task -> context -> agent edits -> quarantine -> checks -> review -> apply -> capsule
 ```
 
+## What VibeGuard Is (and Is Not)
+
+VibeGuard is **change governance**, not a sandbox. Its job is to make an AI
+agent's edits visible, scoped, scored, and auditable before they reach your real
+repository — so accidental drift (secrets, lockfiles, auth, CI, unrelated
+rewrites) is caught at the review/apply boundary.
+
+By default the shadow workspace is a working-directory convention, **not OS-level
+containment**. The agent runs as an ordinary child process with your
+permissions, so a *malicious or compromised* agent could write outside the shadow
+directly. VibeGuard protects strongly against an agent that *makes mistakes*; to
+also defend against an agent that is *actively hostile*, run it inside a real
+sandbox (see [Sandboxing the agent](#sandboxing-the-agent)) and enable
+[tamper-evident artifacts](#tamper-evident-artifacts). Treat risk scores and
+policy decisions as decision support, not an absolute safety guarantee.
+
 ## Why Use It?
 
 Coding agents are great at moving fast, but they can also drift into secrets, lockfiles, auth code, migrations, CI, and unrelated files. VibeGuard gives you a local control layer:
@@ -203,9 +219,81 @@ VibeGuard blocks or approval-gates common high-risk changes:
 - Dependency lockfiles: `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`
 - CI workflows: `.github/workflows/**`
 - Auth, payment, and migration paths
-- Destructive commands such as recursive deletion
-- Pipe-to-shell installs such as `curl ... | sh`
+- Destructive commands such as recursive deletion (including split flags like
+  `rm -r -f`, `rimraf`, and `find ... -delete`)
+- Pipe-to-shell installs such as `curl ... | sh` and `bash -c "$(curl ...)"`
 - Remote mutation commands such as `git push` and `gh pr merge`
+
+Secrets are also excluded from the shadow workspace itself (not just the context
+bundle), and command output captured into capsules is redacted for a broad set
+of secret shapes (cloud keys, GitHub/Slack/Stripe tokens, JWTs, connection
+strings, private-key blocks).
+
+The command guard is **best-effort/advisory**: it is a denylist of known-risky
+command shapes, not a sandbox. Use it as a signal, and rely on a real sandbox for
+enforcement.
+
+## Security Hardening
+
+These are off by default and opt-in.
+
+### Sandboxing the agent
+
+To give the agent real containment, wrap its launch in a sandbox via
+`run.sandbox` in `.vibeguard/config.json`. The `{shadow}` and `{repo}`
+placeholders are substituted at launch:
+
+```json
+{
+  "run": {
+    "sandbox": ["docker", "run", "--rm", "-v", "{shadow}:/work", "-w", "/work", "vibeguard-agent"]
+  }
+}
+```
+
+VibeGuard then runs `docker run ... vibeguard-agent codex ...` instead of `codex`
+directly. You can also pass `--sandbox "<command>"` to `vibeguard run` for a
+one-off. Choose an image/sandbox that does not mount your real repo or home
+directory.
+
+### Tamper-evident artifacts
+
+Set `VIBEGUARD_KEY_DIR` to a directory **outside** your repository to sign
+session records, capsules, and review artifacts with a per-repo HMAC key:
+
+```bash
+export VIBEGUARD_KEY_DIR="$HOME/.config/vibeguard/keys"
+vibeguard init
+```
+
+With signing enabled, `review`/`apply` refuse a session whose record was
+tampered with, and `vibeguard ci validate` reports `capsule_signature_invalid` /
+`review_signature_invalid` for altered artifacts. This reliably detects
+corruption and tampering by anything that does not hold the key; it is not a
+guarantee against an agent that already has full host access (see
+[What VibeGuard Is](#what-vibeguard-is-and-is-not)).
+
+### Untrusted check scripts
+
+`check run` executes commands inside the shadow workspace. A command like
+`npm test` runs whatever the agent put in the shadow's `package.json` scripts. If
+that script-bearing config (`package.json`, `Makefile`, `justfile`, `Taskfile`)
+drifted from the trusted baseline, the check is **skipped** as untrusted. Review
+the change, then re-run with `--allow-untrusted-checks` to execute it.
+
+### Binding CI to the PR diff
+
+`vibeguard ci validate` can verify the capsule actually describes the pull
+request, not a stale/unrelated one:
+
+```bash
+vibeguard ci validate --latest --review-latest --git-base origin/main
+# or pass paths directly:
+vibeguard ci validate --latest --changed-files "src/app.js,src/login.tsx"
+```
+
+Any changed file the capsule does not describe fails the gate, and a high-risk
+applied capsule with no saved review is rejected.
 
 ## Project Policy
 
