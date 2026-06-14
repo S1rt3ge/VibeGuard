@@ -147,13 +147,20 @@ async function main(argv) {
     if (options.json && !optionFlag(options["dry-run"])) {
       throw new Error("run --json is only supported with --dry-run in this slice");
     }
+    const dryRun = optionFlag(options["dry-run"]);
+    const sandbox = await resolveRunSandbox(options);
+    if (!dryRun && sandbox.length === 0) {
+      console.error(
+        "Warning: no sandbox configured — the agent runs with full host access, not contained to the shadow workspace. Set run.sandbox in .vibeguard/config.json or pass --sandbox. See README > Security Hardening.",
+      );
+    }
     const result = await runAgentSession({
       repoRoot: options.root ?? process.cwd(),
       sessionId: options.session,
       agent: requireOption(options.agent, "agent"),
       args: passthroughArgs,
-      dryRun: optionFlag(options["dry-run"]),
-      sandbox: await resolveRunSandbox(options),
+      dryRun,
+      sandbox,
     });
 
     if (options.json) {
@@ -684,6 +691,7 @@ async function runDoctor(repoRoot) {
     checkNodeVersion(),
     checkGitAvailable(),
     await checkProjectState(root),
+    await checkSandboxPosture(root),
   ];
   const projectReady = checks.find((check) => check.name === "project")?.status === "ok";
 
@@ -711,6 +719,34 @@ function checkGitAvailable() {
     return { name: "git", status: "ok", message: result.stdout.trim() };
   }
   return { name: "git", status: "failed", message: "git executable not found" };
+}
+
+async function checkSandboxPosture(root) {
+  const config = await loadProjectConfig(root);
+  const sandbox = config?.run?.sandbox;
+  const configured = Array.isArray(sandbox)
+    ? sandbox.length > 0
+    : typeof sandbox === "string" && sandbox.trim().length > 0;
+
+  if (configured) {
+    return { name: "sandbox", status: "ok", message: "agent launch wrapped (run.sandbox configured)" };
+  }
+
+  const runtime = detectSandboxRuntime();
+  const hint = runtime
+    ? `${runtime} detected — set run.sandbox to contain the agent`
+    : "no container runtime found — agent runs with full host access";
+  return { name: "sandbox", status: "warning", message: `not configured (${hint})` };
+}
+
+function detectSandboxRuntime() {
+  for (const candidate of ["docker", "podman"]) {
+    const result = spawnSync(candidate, ["--version"], { encoding: "utf8", windowsHide: true });
+    if (!result.error && result.status === 0) {
+      return candidate;
+    }
+  }
+  return null;
 }
 
 async function checkProjectState(root) {
@@ -778,6 +814,7 @@ function formatDoctor(result) {
     node: "Node",
     git: "Git",
     project: "Project",
+    sandbox: "Sandbox",
   };
   const lines = ["VibeGuard Doctor"];
 
@@ -847,11 +884,13 @@ function createCheckRunPayload(result) {
 }
 
 function formatRunResult(result) {
+  const sandboxed = Array.isArray(result.sandbox) && result.sandbox.length > 0;
   const lines = [
     result.dryRun ? "Agent run preview" : "Agent run complete",
     `Session: ${result.sessionId}`,
     `Agent: ${result.agent}`,
     `Working directory: ${result.cwd}`,
+    `Sandbox: ${sandboxed ? result.sandbox[0] : "none (agent has full host access)"}`,
     `Command: ${result.commandText}`,
   ];
 

@@ -256,6 +256,10 @@ directly. You can also pass `--sandbox "<command>"` to `vibeguard run` for a
 one-off. Choose an image/sandbox that does not mount your real repo or home
 directory.
 
+`vibeguard doctor` reports your containment posture (whether a container runtime
+is available and whether `run.sandbox` is configured), and `vibeguard run` warns
+on stderr when it launches an agent with no sandbox.
+
 ### Tamper-evident artifacts
 
 Set `VIBEGUARD_KEY_DIR` to a directory **outside** your repository to sign

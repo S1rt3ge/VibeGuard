@@ -75,7 +75,52 @@ test("CLI doctor --json emits parseable readiness payload", async () => {
       payload.checks.find((check) => check.name === "project"),
       { name: "project", status: "warning", message: "not initialized" },
     );
+    assert.equal(payload.checks.find((check) => check.name === "sandbox").status, "warning");
     assert.deepEqual(payload.next, ["vibeguard init"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("CLI doctor warns when no sandbox is configured", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "vibeguard-doctor-sandbox-off-"));
+
+  try {
+    await mkdir(path.join(root, ".vibeguard"), { recursive: true });
+    await writeFile(path.join(root, ".vibeguard", "config.json"), "{}\n");
+
+    const result = spawnSync(
+      process.execPath,
+      [cliPath, "doctor", "--root", root],
+      { encoding: "utf8" },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Sandbox: not configured/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("CLI doctor reports sandbox as ok when run.sandbox is configured", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "vibeguard-doctor-sandbox-on-"));
+
+  try {
+    await mkdir(path.join(root, ".vibeguard"), { recursive: true });
+    await writeFile(
+      path.join(root, ".vibeguard", "config.json"),
+      `${JSON.stringify({ run: { sandbox: ["docker", "run", "--rm", "img"] } }, null, 2)}\n`,
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [cliPath, "doctor", "--root", root, "--json"],
+      { encoding: "utf8" },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.checks.find((check) => check.name === "sandbox").status, "ok");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
