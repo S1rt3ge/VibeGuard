@@ -1,17 +1,32 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { evaluateCommand } from "../../context/src/command-guard.js";
+import { redactSecrets } from "../../context/src/redact.js";
 import { appendCheckRecord } from "./check-log.js";
 import { loadProjectChecks } from "./project.js";
 import { loadSession } from "./shadow-workspace.js";
 
 const OUTPUT_TAIL_LIMIT = 4000;
 
+// Commands that execute scripts defined in a config file the agent controls in
+// the shadow workspace. `npm test` looks innocent but runs whatever the agent
+// put in package.json "scripts". If that config drifted from the trusted
+// baseline, the check is skipped unless the user opts in after review.
+const SCRIPT_CONFIG_TARGETS = [
+  { test: /\b(npm|pnpm|yarn|bun)\b/i, files: ["package.json"] },
+  { test: /\bmake\b/i, files: ["Makefile", "makefile", "GNUmakefile"] },
+  { test: /\bjust\b/i, files: ["justfile", "Justfile", ".justfile"] },
+  { test: /\b(task|go-task)\b/i, files: ["Taskfile.yml", "Taskfile.yaml", "Taskfile.dist.yml"] },
+];
+
 export async function runSessionChecks({
   repoRoot = process.cwd(),
   sessionId,
   checks,
+  allowUntrustedChecks = false,
   now = new Date(),
 } = {}) {
   const root = path.resolve(repoRoot);
@@ -24,67 +39,13 @@ export async function runSessionChecks({
 
   const records = [];
   for (const check of checkDefinitions) {
-    records.push(await runOneCheck(root, session, check, { now }));
+    records.push(await runOneCheck(root, session, check, { now, allowUntrustedChecks }));
   }
 
   return {
     session,
     checks: records,
     ok: records.every((record) => record.status === "passed"),
-  };
-}
-
-export function parseCommand(command) {
-  const normalized = String(command ?? "").trim();
-  if (!normalized) {
-    throw new Error("Command is required");
-  }
-
-  const tokens = [];
-  let token = "";
-  let quote = null;
-
-  for (let index = 0; index < normalized.length; index += 1) {
-    const char = normalized[index];
-    const next = normalized[index + 1];
-
-    if (quote) {
-      if (char === "\\" && next === quote) {
-        token += next;
-        index += 1;
-      } else if (char === quote) {
-        quote = null;
-      } else {
-        token += char;
-      }
-      continue;
-    }
-
-    if (char === "\"" || char === "'") {
-      quote = char;
-    } else if (/\s/.test(char)) {
-      if (token) {
-        tokens.push(token);
-        token = "";
-      }
-    } else {
-      token += char;
-    }
-  }
-
-  if (quote) {
-    throw new Error("Command contains an unclosed quote");
-  }
-  if (token) {
-    tokens.push(token);
-  }
-  if (tokens.length === 0) {
-    throw new Error("Command is required");
-  }
-
-  return {
-    executable: tokens[0],
-    args: tokens.slice(1),
   };
 }
 
@@ -124,13 +85,31 @@ async function runOneCheck(repoRoot, session, check, options) {
     }, options);
   }
 
-  const { executable, args } = parseCommand(check.command);
+  if (!options.allowUntrustedChecks) {
+    const untrusted = await findUntrustedScriptConfig(session, check.command);
+    if (untrusted.length > 0) {
+      return appendCheckRecord(repoRoot, session.id, {
+        name: check.name,
+        status: "skipped",
+        command: check.command,
+        summary: `Untrusted script config changed in shadow: ${untrusted.join(", ")} (re-run with --allow-untrusted-checks after reviewing it)`,
+        durationMs: 0,
+        exitCode: null,
+        stdoutTail: "",
+        stderrTail: "",
+      }, options);
+    }
+  }
+
   const startedAt = Date.now();
-  const result = spawnSync(executable, args, {
+  // Run through the platform shell so PATH-resolved shims (npm/pnpm/yarn -> *.cmd
+  // on Windows) and shell syntax behave the way users wrote them in config.
+  const result = spawnSync(check.command, {
     cwd: session.shadowPath,
     encoding: "utf8",
     maxBuffer: 10 * 1024 * 1024,
     windowsHide: true,
+    shell: true,
   });
   const durationMs = Date.now() - startedAt;
   const exitCode = result.status ?? null;
@@ -160,7 +139,45 @@ function tail(value) {
 }
 
 function redactOutput(value) {
-  return String(value ?? "")
-    .replace(/sk-[A-Za-z0-9_-]{20,}/g, "[REDACTED:API_KEY]")
-    .replace(/\b[A-Z0-9_]*(TOKEN|SECRET|PASSWORD|API_KEY)\b\s*=\s*[^\s]+/gi, "[REDACTED:SECRET]");
+  return redactSecrets(value).content;
+}
+
+async function findUntrustedScriptConfig(session, command) {
+  const baseline = session.snapshot?.manifest;
+  if (!baseline || typeof baseline !== "object") {
+    return [];
+  }
+
+  const candidates = new Set();
+  for (const target of SCRIPT_CONFIG_TARGETS) {
+    if (target.test.test(command)) {
+      for (const file of target.files) {
+        candidates.add(file);
+      }
+    }
+  }
+
+  const changed = [];
+  for (const file of candidates) {
+    const current = await hashShadowFile(session.shadowPath, file);
+    if (current === null) {
+      continue;
+    }
+    if ((baseline[file]?.hash ?? null) !== current) {
+      changed.push(file);
+    }
+  }
+  return changed;
+}
+
+async function hashShadowFile(shadowPath, relativeFile) {
+  try {
+    const bytes = await readFile(path.join(shadowPath, relativeFile));
+    return createHash("sha256").update(bytes).digest("hex");
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
 }

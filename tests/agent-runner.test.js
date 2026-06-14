@@ -101,6 +101,40 @@ test("runAgentSession launches injected Codex executable inside shadow workspace
   }
 });
 
+test("runAgentSession wraps the launch in a configured sandbox", async () => {
+  const root = await createFixture("vibeguard-agent-sandbox-");
+
+  try {
+    const session = await createShadowSession({
+      repoRoot: root,
+      task: "sandboxed agent",
+      sessionId: "agent-sandbox",
+    });
+
+    const result = await runAgentSession({
+      repoRoot: root,
+      sessionId: "agent-sandbox",
+      agent: "codex",
+      args: ["--task", "x"],
+      sandbox: ["docker", "run", "--rm", "-v", "{shadow}:/work", "-w", "/work", "img"],
+      dryRun: true,
+    });
+
+    assert.deepEqual(result.sandbox.slice(0, 5), [
+      "docker",
+      "run",
+      "--rm",
+      "-v",
+      `${session.shadowPath}:/work`,
+    ]);
+    assert.equal(result.commandText.startsWith("docker run --rm"), true);
+    assert.match(result.commandText, /img codex --task x$/);
+    assert.equal(result.executable, "codex");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("runAgentSession rejects unsupported agents", async () => {
   const root = await createFixture("vibeguard-agent-unsupported-");
 

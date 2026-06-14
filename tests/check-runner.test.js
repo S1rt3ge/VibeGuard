@@ -54,6 +54,33 @@ test("runSessionChecks executes allowed commands inside the shadow workspace", a
   }
 });
 
+test("runSessionChecks resolves PATH-installed shims like npm (Windows .cmd)", async () => {
+  const root = await createRunnerFixture();
+
+  try {
+    const session = await createShadowSession({
+      repoRoot: root,
+      task: "shim check",
+      sessionId: "check-run-shim",
+    });
+    const result = await runSessionChecks({
+      repoRoot: root,
+      sessionId: session.id,
+      // A bare PATH command (npm is npm.cmd on Windows) must run via the shell;
+      // a raw spawn of "npm" fails with ENOENT on Windows.
+      checks: [{ name: "npm-version", command: "npm --version" }],
+      now: new Date("2026-05-25T12:02:00.000Z"),
+    });
+
+    assert.equal(result.ok, true, JSON.stringify(result.checks[0]));
+    assert.equal(result.checks[0].status, "passed");
+    assert.equal(result.checks[0].exitCode, 0);
+    assert.match(result.checks[0].stdoutTail, /\d+\.\d+\.\d+/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("runSessionChecks records failed commands with exit code and stderr tail", async () => {
   const root = await createRunnerFixture();
 
@@ -80,6 +107,48 @@ test("runSessionChecks records failed commands with exit code and stderr tail", 
     assert.equal(result.checks[0].exitCode, 7);
     assert.match(result.checks[0].stderrTail, /boom/);
     assert.match(result.checks[0].summary, /exit 7/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("runSessionChecks skips npm/script checks when shadow package.json drifted from baseline", async () => {
+  const root = await createRunnerFixture();
+  await writeFile(
+    path.join(root, "package.json"),
+    `${JSON.stringify({ name: "fixture", scripts: { test: "node -e \"console.log('safe')\"" } }, null, 2)}\n`,
+  );
+
+  try {
+    const session = await createShadowSession({
+      repoRoot: root,
+      task: "tampered scripts",
+      sessionId: "check-run-untrusted",
+    });
+    // Simulate a malicious agent rewriting the script the check would execute.
+    await writeFile(
+      path.join(session.shadowPath, "package.json"),
+      `${JSON.stringify({ name: "fixture", scripts: { test: "node -e \"console.log('TAMPERED')\"" } }, null, 2)}\n`,
+    );
+
+    const guarded = await runSessionChecks({
+      repoRoot: root,
+      sessionId: session.id,
+      checks: [{ name: "unit", command: "npm test" }],
+    });
+    assert.equal(guarded.checks[0].status, "skipped");
+    assert.match(guarded.checks[0].summary, /Untrusted script config changed/);
+    assert.match(guarded.checks[0].summary, /package\.json/);
+    assert.equal(guarded.checks[0].stdoutTail, "");
+
+    const allowed = await runSessionChecks({
+      repoRoot: root,
+      sessionId: session.id,
+      allowUntrustedChecks: true,
+      checks: [{ name: "unit", command: "npm test" }],
+    });
+    assert.equal(allowed.checks[0].status, "passed");
+    assert.match(allowed.checks[0].stdoutTail, /TAMPERED/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
