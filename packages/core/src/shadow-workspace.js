@@ -27,10 +27,10 @@ import {
   createHandoffMetadata,
   writeTaskHandoff,
 } from "./handoff.js";
+import { buildReviewResult } from "./review-builder.js";
 import { loadProjectPolicy } from "./project.js";
 import { ensureSigningKey, signArtifact, verifyArtifact } from "./signing.js";
-import { matchesAny, normalizeRepoPath, reviewChanges } from "../../policy/src/index.js";
-import { scoreReview } from "../../risk-engine/src/index.js";
+import { matchesAny, normalizeRepoPath } from "../../policy/src/index.js";
 
 const SNAPSHOT_EXCLUDES = [
   ".git",
@@ -168,9 +168,7 @@ export async function reviewShadowSession(repoRoot, sessionId, options = {}) {
     configPolicy.allowedGlobs,
   );
   const policy = options.policy ?? (await loadProjectPolicy(repoRoot, { allowedGlobs }));
-  const review = reviewChanges(diff.map((item) => item.path), policy);
-  attachDiffStatus(review, diff);
-  const score = scoreReview(review);
+  const { review, score } = buildReviewResult(diff, policy);
 
   return {
     session,
@@ -500,16 +498,6 @@ async function collectFiles(directory, root, includeAll) {
   }
 
   return files;
-}
-
-function attachDiffStatus(review, diff) {
-  const statusByPath = new Map(diff.map((item) => [item.path, item.status]));
-
-  for (const group of [review.blocked, review.approvalRequired, review.reviewable]) {
-    for (const item of group) {
-      item.status = statusByPath.get(item.path) ?? "modified";
-    }
-  }
 }
 
 async function findLatestSessionId(repoRoot) {

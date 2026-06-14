@@ -47,6 +47,8 @@ import {
   saveReviewArtifact,
 } from "../../../packages/core/src/review-store.js";
 import { evaluateCommand } from "../../../packages/context/src/command-guard.js";
+import { gitRangeDiff } from "../../../packages/core/src/git-diff.js";
+import { buildReviewResult } from "../../../packages/core/src/review-builder.js";
 import { reviewChanges } from "../../../packages/policy/src/index.js";
 import { scoreReview } from "../../../packages/risk-engine/src/index.js";
 import {
@@ -474,6 +476,48 @@ async function main(argv) {
         });
       } else {
         console.log(formatCapsuleShow(result));
+      }
+      return 0;
+    }
+
+    if (subcommand === "from") {
+      const options = parseOptions(subArgs);
+      const root = options.root ?? process.cwd();
+      const base = optionString(options.base);
+      if (!base) {
+        throw new Error("--base is required (e.g. --base origin/main)");
+      }
+      const head = optionString(options.head) || "HEAD";
+      const diff = gitRangeDiff(root, base, head);
+      const allowedGlobs = parseMultiValueOption(options.allow);
+      const policy = await loadProjectPolicy(root, {
+        allowedGlobs: allowedGlobs.length > 0 ? allowedGlobs : undefined,
+      });
+      const { review, score } = buildReviewResult(diff, policy);
+      const capsule = createCapsule({
+        task: optionString(options.task) || `${base}...${head}`,
+        agent: optionString(options.agent) || "unknown",
+        model: optionString(options.model) || "unknown",
+        review,
+        score,
+        // Attested: these files landed in the range (whoever applied them).
+        // Blocked/secret files appearing here are exactly what CI should catch.
+        applied: diff.map((item) => item.path),
+        humanApproval: "attested",
+        provenance: "git_range",
+      });
+      const savedPath = await saveCapsule(root, capsule);
+      if (options.json) {
+        printJson({
+          schemaVersion: "0.1",
+          command: "capsule_from",
+          path: savedPath,
+          capsule,
+        });
+      } else {
+        console.log(`Wrote capsule ${savedPath}`);
+        console.log(`Provenance: git_range (${base}...${head})`);
+        console.log(`Files: ${capsule.filesChanged.length} | risk: ${capsule.risk.level} | blocked: ${review.blocked.length}`);
       }
       return 0;
     }

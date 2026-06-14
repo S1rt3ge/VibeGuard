@@ -15,6 +15,7 @@ export function createCapsule({
   apply = null,
   applied = [],
   humanApproval = "pending",
+  provenance = "vibeguard_apply",
   now = new Date(),
 } = {}) {
   const trimmedTask = String(task ?? "").trim();
@@ -52,6 +53,7 @@ export function createCapsule({
     reviewable: safeReview.reviewable,
     applied,
     humanApproval,
+    provenance,
     createdAt,
   };
 }
