@@ -153,7 +153,7 @@ test("CLI init and task commands create project state", async () => {
     assert.equal(task.status, 0, task.stderr);
     assert.match(task.stdout, /Created shadow session/);
     assert.match(task.stdout, /Shadow workspace:/);
-    assert.match(task.stdout, /Open the shadow workspace in your AI coding tool/);
+    assert.match(task.stdout, /open the shadow workspace in your AI coding tool/i);
     assert.match(task.stdout, /vibeguard review --session/);
     assert.match(task.stdout, /vibeguard apply --safe --session/);
   } finally {
