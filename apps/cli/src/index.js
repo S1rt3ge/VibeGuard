@@ -11,6 +11,7 @@ import {
   saveCapsule,
 } from "../../../packages/core/src/capsule-store.js";
 import { runAgentSession } from "../../../packages/core/src/agent-runner.js";
+import { expandSandboxProfile } from "../../../packages/core/src/sandbox-profiles.js";
 import {
   initializeProject,
   loadProjectConfig,
@@ -563,11 +564,26 @@ function parseOptionalNonNegativeNumberOption(value, name) {
 }
 
 async function resolveRunSandbox(options) {
+  // 1. Explicit raw wrapper command wins.
   const flag = optionString(options.sandbox);
   if (flag) {
     return flag.trim().split(/\s+/).filter(Boolean);
   }
   const config = await loadProjectConfig(options.root ?? process.cwd());
+
+  // 2. A named profile (CLI --sandbox-profile or run.sandboxProfile), expanded
+  //    with the configured image.
+  const profileName =
+    optionString(options["sandbox-profile"]) ||
+    (typeof config?.run?.sandboxProfile === "string" ? config.run.sandboxProfile.trim() : "");
+  if (profileName) {
+    const image =
+      optionString(options.image) ||
+      (typeof config?.run?.image === "string" ? config.run.image.trim() : "");
+    return expandSandboxProfile(profileName, image);
+  }
+
+  // 3. A raw wrapper from config.
   const configured = config?.run?.sandbox;
   if (Array.isArray(configured)) {
     return configured.map((item) => String(item));
@@ -724,9 +740,10 @@ function checkGitAvailable() {
 async function checkSandboxPosture(root) {
   const config = await loadProjectConfig(root);
   const sandbox = config?.run?.sandbox;
-  const configured = Array.isArray(sandbox)
-    ? sandbox.length > 0
-    : typeof sandbox === "string" && sandbox.trim().length > 0;
+  const profile = config?.run?.sandboxProfile;
+  const configured =
+    (Array.isArray(sandbox) ? sandbox.length > 0 : typeof sandbox === "string" && sandbox.trim().length > 0) ||
+    (typeof profile === "string" && profile.trim().length > 0);
 
   if (configured) {
     return { name: "sandbox", status: "ok", message: "agent launch wrapped (run.sandbox configured)" };

@@ -256,6 +256,23 @@ directly. You can also pass `--sandbox "<command>"` to `vibeguard run` for a
 one-off. Choose an image/sandbox that does not mount your real repo or home
 directory.
 
+For the common case, use a built-in profile (`docker` or `podman`) and just name
+an image instead of hand-writing the wrapper:
+
+```json
+{
+  "run": {
+    "sandboxProfile": "docker",
+    "image": "vibeguard-agent"
+  }
+}
+```
+
+That expands to `docker run --rm -i -v {shadow}:/work -w /work vibeguard-agent`.
+You can also pass `--sandbox-profile docker --image vibeguard-agent` to
+`vibeguard run`. The image must contain your agent (e.g. Codex); networking is
+left enabled so the agent can reach its model API.
+
 `vibeguard doctor` reports your containment posture (whether a container runtime
 is available and whether `run.sandbox` is configured), and `vibeguard run` warns
 on stderr when it launches an agent with no sandbox.
