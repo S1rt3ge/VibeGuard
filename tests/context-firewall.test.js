@@ -83,6 +83,47 @@ test("buildContextBundle redacts inline secrets while preserving useful content"
   }
 });
 
+test("buildContextBundle redacts a broad set of secret shapes", async () => {
+  const root = await createContextFixture();
+
+  try {
+    const awsKey = ["AKIA", "ABCDEFGHIJ123456"].join("");
+    const githubToken = ["ghp", "a".repeat(36)].join("_");
+    const jwt = ["eyJhbGciOiJIUzI1Ni1", "eyJzdWIiOiIxMjM0NTY3", "abcdefghij1234567890"].join(".");
+    await writeFile(
+      path.join(root, "lib", "auth", "session.ts"),
+      [
+        "export const ok = true;",
+        `const a = "${awsKey}";`,
+        `const g = "${githubToken}";`,
+        `const j = "${jwt}";`,
+        "const c = 'mongodb://admin:hunter2@db.example.com:27017/app';",
+        "",
+      ].join("\n"),
+    );
+
+    const bundle = await buildContextBundle({
+      repoRoot: root,
+      task: "audit secrets",
+      includeGlobs: ["lib/auth/**"],
+    });
+    const session = bundle.included.find((item) => item.path === "lib/auth/session.ts");
+
+    assert.ok(session.content.includes("export const ok = true;"));
+    assert.equal(session.content.includes(awsKey), false);
+    assert.equal(session.content.includes(githubToken), false);
+    assert.equal(session.content.includes(jwt), false);
+    assert.equal(session.content.includes("admin:hunter2"), false);
+    const reasons = new Set(session.redactions);
+    assert.ok(reasons.has("aws_key"));
+    assert.ok(reasons.has("github_token"));
+    assert.ok(reasons.has("jwt"));
+    assert.ok(reasons.has("connection_string"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("buildContextBundle excludes binary files safely", async () => {
   const root = await createContextFixture();
 

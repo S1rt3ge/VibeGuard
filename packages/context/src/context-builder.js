@@ -2,6 +2,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { matchesAny, normalizeRepoPath } from "../../policy/src/index.js";
+import { redactSecrets } from "./redact.js";
 
 const EXCLUDED_GLOBS = [
   ".git",
@@ -20,27 +21,6 @@ const EXCLUDED_GLOBS = [
   "**/*token*",
   "**/*.pem",
   "**/id_rsa*",
-];
-
-const REDACTION_RULES = [
-  {
-    name: "env_secret",
-    reason: "secret_env_value",
-    regex: /\b(DATABASE_URL|JWT_SECRET|STRIPE_SECRET_KEY|OPENAI_API_KEY)\s*=\s*([^\s'"]+)/g,
-    replace: (_match, key) => `${key}=[REDACTED:${key}]`,
-  },
-  {
-    name: "openai_style_key",
-    reason: "api_key",
-    regex: /\bsk[-_][A-Za-z0-9_-]{16,}\b/g,
-    replace: () => "[REDACTED:API_KEY]",
-  },
-  {
-    name: "private_key_block",
-    reason: "private_key",
-    regex: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
-    replace: () => "[REDACTED:PRIVATE_KEY]",
-  },
 ];
 
 export async function buildContextBundle({
@@ -162,23 +142,14 @@ function exclusionReason(relativePath) {
 }
 
 function redactContent(filePath, content) {
-  const redactions = [];
-  let redacted = content;
-
-  for (const rule of REDACTION_RULES) {
-    redacted = redacted.replace(rule.regex, (...args) => {
-      redactions.push({
-        path: filePath,
-        pattern: rule.name,
-        reason: rule.reason,
-      });
-      return rule.replace(...args);
-    });
-  }
-
+  const { content: redacted, redactions } = redactSecrets(content);
   return {
     content: redacted,
-    redactions,
+    redactions: redactions.map((item) => ({
+      path: filePath,
+      pattern: item.pattern,
+      reason: item.reason,
+    })),
   };
 }
 
